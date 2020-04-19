@@ -1,9 +1,10 @@
 # nbt-explorer
-### _Your Name <your.name@example.com>_
 
-This is a project to do ... something.
+### Izak Nathanael Halseide <halseide.izak@gmail.com>
+
+This is a project for exploring files in the NBT file format
 
 ## License
 
-Specify license here
+See LICENSE file.
 
