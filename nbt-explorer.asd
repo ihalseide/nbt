@@ -1,10 +1,12 @@
 ;;;; nbt-explorer.asd
 
-(asdf:defsystem #:com.div0.nbt-explorer
-  :description "Describe nbt-explorer here"
+(asdf:defsystem #:nbt-explorer
+  :description "Application for exploring Named Binary Tag files."
   :author "Izak Halseide <halseide.izak@gmail.com>"
-  :license  "Specify license here"
+  :license  "MIT License"
   :version "0.0.1"
   :serial t
-  :components ((:file "package")
+  :depends-on (#:binary-data)
+  :components ((:file "packages")
+               (:file "nbt-data")
                (:file "nbt-explorer")))
