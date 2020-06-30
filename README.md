@@ -1,8 +1,8 @@
 # nbt-explorer
 
-### Izak Nathanael Halseide <halseide.izak@gmail.com>
+This is a (non-working) project for exploring files in the NBT file format.
 
-This is a project for exploring files in the NBT file format
+Development is currently suspended.
 
 ## License
 
