@@ -1,5 +1,2 @@
-# Compiled LISP
-*.fasl
-
-# VIM swap
-*.swp
+__pycache__/
+*.pyc
