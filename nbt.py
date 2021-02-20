@@ -48,7 +48,7 @@ class Tag:
             return '<Tag(%s)>' % (tagname)
         else:
             tagname = name_tag_type(self.tagtype)
-            return '<Tag(%s, name=%s)>' % (tagname, self.name) 
+            return '<Tag(%s, name="%s")>' % (tagname, self.name) 
 
 def tag_to_data (tag):
     tagtype = tag.tagtype
@@ -74,50 +74,6 @@ def tag_to_data (tag):
         return tag.bytearray
     elif TAG_COMPOUND == tagtype:
         return {subtag.name: tag_to_data(subtag) for subtag in tag.compound if subtag.tagtype != TAG_END}
-
-
-def print_tag (tag, indent=0, bytearraysize=64): 
-    tagtype = tag.tagtype 
-    namestr = ' "%s"'%tag.name if tag.name is not None else ''
-
-    print(end='    ' * indent) 
-    if TAG_END == tagtype:
-        print('end')
-    elif TAG_BYTE == tagtype:
-        print('byte%s = %x' % (namestr, tag.byte))
-    elif TAG_SHORT == tagtype:
-        print('short%s = %d' % (namestr, tag.short))
-    elif TAG_INT == tagtype:
-        print('int%s = %d' % (namestr, tag.int))
-    elif TAG_LONG == tagtype:
-        print('long%s = %d' % (namestr, tag.long))
-    elif TAG_FLOAT == tagtype:
-        print('float%s = %f' % (namestr, tag.float))
-    elif TAG_DOUBLE == tagtype:
-        print('double%s = %f' % (namestr, tag.double))
-    elif TAG_STRING == tagtype:
-        print('string%s = "%s"' % (namestr, tag.string))
-    elif TAG_LIST == tagtype:
-        print('list %s[%d]%s =' % (name_tag_type(tag.item_type), len(tag.list), namestr))
-        for sub_tag in tag.list:
-            print_tag(sub_tag, indent+1)
-    elif TAG_BYTEARRAY == tagtype:
-        print('bytearray [%d]%s =' % (len(tag.bytearray), namestr))
-        hex_stream = iter(tag.bytearray.hex().upper())
-        i = 1
-        print(end='    ' * (indent + 1)) 
-        while char := next(hex_stream, None):
-            print(end=char)
-            if i > (bytearraysize - 1):
-                print()
-                print(end='    ' * (indent + 1)) 
-                i = 0
-            i += 1
-        print()
-    elif TAG_COMPOUND == tagtype:
-        print('compound {%d}%s =' % (len(tag.compound) - 1, namestr))
-        for sub_tag in tag.compound:
-            print_tag(sub_tag, indent+1)
 
 def next_bytes (stream, n):
     result = bytearray(n)
@@ -176,67 +132,63 @@ def read_tag (stream, tagtype) -> Tag:
     return tag
 
 def write_tag (file, tag):
-    # Write the tag type
-    file.write(bytes([tag.tagtype]))
-    # Now the payload
+    file.write(struct.pack('c', bytes((tag.tagtype,))))
     write_tag_payload(file, tag)
 
-def write_named_tag (file, tagtype, value, name):
-    pass
+def write_named_tag (file, tag):
+    write_tag(file, Tag(TAG_BYTE, byte=tag.tagtype))
+    if TAG_END == tag.tagtype:
+        return
+    if tag.name is None:
+        raise ValueError('tag has no name')
+    write_tag(file, Tag(TAG_STRING, string=tag.name))
+    write_tag_payload(file, tag)
 
 def write_tag_payload (file, tag):
     tagtype = tag.tagtype
     if TAG_END == tagtype:
-        # No payload for TAG_END
-        pass
+        pass # No payload for TAG_END
     elif TAG_BYTE == tagtype:
-        byte = struct.pack('c', value)
+        byte = struct.pack('c', bytes((tag.byte,)))
         file.write(byte)
     elif TAG_SHORT == tagtype:
-        short = struct.pack('>h', value)
+        short = struct.pack('>h', tag.short)
         file.write(short)
     elif TAG_INT == tagtype:
-        integer = struct.pack('>i', value)
+        integer = struct.pack('>i', tag.int)
         file.write(integer)
     elif TAG_LONG == tagtype:
-        long_ = struct.pack('>q', value)
+        long_ = struct.pack('>q', tag.long)
         file.write(long_)
     elif TAG_FLOAT == tagtype:
-        float_ = struct.pack('>f', value)
+        float_ = struct.pack('>f', tag.float)
         file.write(float_)
     elif TAG_DOUBLE == tagtype:
-        double = struct.pack('>d', value)
+        double = struct.pack('>d', tag.double)
         file.write(double)
     elif TAG_BYTEARRAY == tagtype:
         # Bytearray: length, bytes[length]
-        list_ = bytearray(value)
-        length = len(list_)
-        write_tag(file, TAG_INT, length)
-        file.write(list_)
+        file.write(bytes(len(tag.bytearray)))
+        file.write(tag.bytearray)
     elif TAG_STRING == tagtype:
         # String: short length, bytes[length]
-        list_ = str.encode(value)
-        length = len(list_)
-        write_tag(file, TAG_SHORT, length)
-        file.write(list_)
+        write_tag(file, Tag(TAG_SHORT, short=len(tag.string)))
+        file.write(str.encode(tag.string, 'utf-8'))
     elif TAG_LIST == tagtype: 
         # Write a length encoded list of unnamed tags
-        if elementtype is None:
-            raise ValueError('elementtype required for %s' % name_tag_type(tagtype))
-        list_ = list(value)
-        length = len(list_)
-        write_tag(file, Tag(TAG_BYTE, byte=elementtype))
-        write_tag(file, Tag(TAG_INT, int=length))
+        write_tag(file, Tag(TAG_INT, int=len(tag.list)))
+        write_tag(file, Tag(TAG_BYTE, byte=tag.item_type))
         for subtag in tag.list:
             write_tag_payload(file, subtag)
     elif TAG_COMPOUND == tagtype:
-        list_ = list(value)
-        for named_tag in list_:
-            write_named_tag(file, named_tag)
-        # Terminate with a TAG_END, which has no value
-        write_tag(TAG_END, None)
+        # Write all named subtags
+        for subtag in tag.compound:
+            write_named_tag(file, subtag)
+        # Tag_compound must end with Tag_end
+        if subtag.tagtype != TAG_END:
+            write_tag(file, Tag(TAG_END))
     else:
-        raise ValueError('bad tag type: "%x"' % tagtype)
+        raise ValueError('bad tag type: "%s"' % tagtype)
 
 def read_named_tag (stream, tagtype): 
     if tagtype == TAG_END:
@@ -249,12 +201,15 @@ def read_named_tag (stream, tagtype):
 class NBTFile:
 
     def __init__(self, filename):
+        # Unzip the file
         self.filename = filename
         with gzip.open(self.filename, 'rb') as f:
             self.data = f.read() 
+
         self.stream = iter(self.data) 
-        if TAG_COMPOUND == next(self.stream):
-            self.compound = read_named_tag(self.stream, TAG_COMPOUND)
-        else:
+
+        # Read the root TAG_COMPOUND tag
+        if TAG_COMPOUND != next(self.stream):
             raise ValueError('NBT file doesn\'t start with %s', name_tag_type(TAG_COMPOUND))
+        self.compound = read_named_tag(self.stream, TAG_COMPOUND)
 
