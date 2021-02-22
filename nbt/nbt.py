@@ -30,19 +30,23 @@ TAG_COMPOUND,
 TAG_INT_ARRAY,  
 TAG_LONG_ARRAY) = ALL_TAGS = range(len(TAG_NAMES))
 
+
 def name_tag_type (tag_type):
     try:
         return TAG_NAMES[tag_type]
     except (IndexError, TypeError):
         raise ValueError('unknown tag type')
 
+
 def is_list_tag_type (tag_type):
     return tag_type in (TAG_BYTE_ARRAY, TAG_STRING, TAG_LIST,
                         TAG_COMPOUND, TAG_INT_ARRAY, TAG_LONG_ARRAY)
 
+
 def is_atom_tag_type (tag_type):
     return tag_type in (TAG_BYTE, TAG_SHORT, TAG_INT,
                         TAG_LONG, TAG_FLOAT, TAG_DOUBLE)
+
 
 class Tag: 
     def __init__ (self, tag_type, name=None):
@@ -55,6 +59,7 @@ class Tag:
         self.length = None
         # Only used for list
         self.item_type = None
+
 
     def __getitem__ (self, key):
         if type(key) == int:
@@ -96,8 +101,10 @@ class Tag:
         else:
             raise TypeError('key must be an int or a str')
 
+
     def __setitem__ (self, key, value):
         pass
+
 
     def __repr__ (self):
         try:
@@ -118,6 +125,7 @@ class Tag:
 
         result += ')>'
         return result
+
 
     def __bytes__ (self):
         tag_type = self.tag_type
@@ -166,6 +174,7 @@ class Tag:
         else:
             raise ValueError('unknown tag type')
 
+
 class NBTFile: 
     def __init__(self, filename):
         # Unzip the file
@@ -180,13 +189,16 @@ class NBTFile:
                 found = name_tag_type(self.compound.tag_type)
                 raise ValueError('a NBT file must start with a "%s" but begins with a "%s" instead' %(expected, found)) 
 
+
     def __repr__ (self):
         return '<NBTFile(filename="%s")>' % self.filename
+
 
     def __getitem__ (self, name):
         if type(name) != str:
             raise TypeError('name must be a instance of str')
         return self.compound[name]
+
 
     def __setitem__ (self, name, value):
         if type(name) != str:
@@ -194,6 +206,7 @@ class NBTFile:
         if type(value) != Tag:
             raise TypeError('value must be an instance of %s' %str(Tag))
         self.compound[name] = value
+
 
 def read_named_tag (file): 
     tag_type = file.read(1)[0]
@@ -204,6 +217,7 @@ def read_named_tag (file):
     tag = read_tag(file, tag_type) 
     tag.name = name
     return tag
+
 
 def read_tag (file, tag_type):
     tag = Tag(tag_type)
@@ -264,6 +278,7 @@ def read_tag (file, tag_type):
         raise ValueError('unknown tag type: %s' % tag_type)
     return tag
 
+
 def write_named_tag (file, tag):
     # Write tag type
     file.write(bytes(tag.tag_type))
@@ -273,8 +288,10 @@ def write_named_tag (file, tag):
     # Write payload
     write_tag(file, tag)
 
+
 def write_tag (file, tag):
     file.write(bytes(tag))
+
 
 def print_tag (tag, indent=0, indent_str='    ', bytearraysize=64): 
     tag_type = tag.tag_type 
