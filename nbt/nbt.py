@@ -1,19 +1,19 @@
 import gzip, sys, struct
 
 TAG_NAMES = [
-    'TAG_end',
-    'TAG_byte',
-    'TAG_short',
-    'TAG_int',
-    'TAG_long',
-    'TAG_float',
-    'TAG_double',
-    'TAG_byte_array',
-    'TAG_string',
-    'TAG_list',
-    'TAG_compound',
-    'TAG_int_array',
-    'TAG_long_array',
+    'tag_end',
+    'tag_byte',
+    'tag_short',
+    'tag_int',
+    'tag_long',
+    'tag_float',
+    'tag_double',
+    'tag_byte_array',
+    'tag_string',
+    'tag_list',
+    'tag_compound',
+    'tag_int_array',
+    'tag_long_array',
 ]
 
 (TAG_END,
@@ -72,8 +72,6 @@ class Tag:
             if TAG_COMPOUND == self.tag_type:
                 if type(key) != str:
                     raise TypeError('key must be an instance of str')
-                if self.name.value == key:
-                    return self
                 for tag in self.value:
                     # Ignore end tags
                     if tag.tag_type == TAG_END:
@@ -103,7 +101,13 @@ class Tag:
 
 
     def __setitem__ (self, key, value):
-        pass
+        if type(key) == int:
+            if not is_list_type(self.tag_type):
+                raise ValueError('NBT tag must be a list-like type')
+            # TODO: check that the value is a valid type
+            self.data[key] = value
+        else:
+            raise TypeError('key must an int')
 
 
     def __repr__ (self):
@@ -112,19 +116,18 @@ class Tag:
         except ValueError:
             return '<Unknown Tag %s>' % str(self.tag_type)
 
-        result = '<Tag (%s' % typename
-
+        props = [typename] 
         if self.name is not None:
-            result += ' name="%s"' % self.name.value
-
-        if self.length is not None:
-            result += ' length=%d' % self.length.value 
+            props.append('name="%s"' % self.name.value) 
+        if is_atom_tag_type(self.tag_type):
+            props.append('value=%d' % self.value)
+        else:
+            props.append('length=%d' % self.length.value)
             # Item type only exists if length does too
             if self.item_type is not None:
-                result += ' item_type=%s' % name_tag_type(self.item_type.value)
+                props.append('item_type=%s' % name_tag_type(self.item_type.value)) 
 
-        result += ')>'
-        return result
+        return 'Tag(%s)' % ', '.join(props)
 
 
     def __bytes__ (self):
@@ -291,61 +294,4 @@ def write_named_tag (file, tag):
 
 def write_tag (file, tag):
     file.write(bytes(tag))
-
-
-def print_tag (tag, indent=0, indent_str='    ', bytearraysize=64): 
-    tag_type = tag.tag_type 
-    namestr = ' "%s"' %(tag.name.value if tag.name is not None else '')
-
-    print(indent_str * indent, end='') 
-    if TAG_END == tag_type:
-        print('end')
-        print('    ' * (indent - 1), '}', sep='')
-    elif TAG_BYTE == tag_type:
-        print('byte%s = %X' % (namestr, int(tag.value)))
-    elif TAG_SHORT == tag_type:
-        print('short%s = %d' % (namestr, tag.value))
-    elif TAG_INT == tag_type:
-        print('int%s = %d' % (namestr, tag.value))
-    elif TAG_LONG == tag_type:
-        print('long%s = %d' % (namestr, tag.value))
-    elif TAG_FLOAT == tag_type:
-        print('float%s = %f' % (namestr, tag.value))
-    elif TAG_DOUBLE == tag_type:
-        print('double%s = %f' % (namestr, tag.value))
-    elif TAG_STRING == tag_type:
-        print('string [%d]%s = "%s"' % (tag.length.value, namestr, tag.value))
-    elif TAG_LIST == tag_type:
-        print('list %s[%d]%s = {' % (name_tag_type(tag.item_type.tag_type), tag.length.value, namestr))
-        for sub_tag in tag.value:
-            print_tag(sub_tag, indent + 1)
-        print('    ' * indent, '}', sep='')
-    elif TAG_BYTE_ARRAY == tag_type:
-        print('byte array [%d]%s = {' % (tag.length.value, namestr))
-        hex_stream = iter(tag.value.hex().upper())
-        i = 1
-        print(end=indent_str * (indent + 1)) 
-        while char := next(hex_stream, None):
-            print(end=char)
-            if i > (bytearraysize - 1):
-                print()
-                print(end='    ' * (indent + 1)) 
-                i = 0
-            i += 1
-        print()
-        print(indent_str * indent, '}', sep='')
-    elif TAG_COMPOUND == tag_type:
-        print('compound {%d}%s = {' % (len(tag.value) - 1, namestr))
-        for sub_tag in tag.value:
-            print_tag(sub_tag, indent + 1)
-    elif TAG_INT_ARRAY == tag_type:
-        print('int array [%d]%s = {' % (tag.length.value, namestr))
-        print(',\n'.join(str(t.value) for t in tag.value))
-        print(indent_str * indent, '}', sep='')
-    elif TAG_LONG_ARRAY == tag_type:
-        print('long array [%d]%s = {' % (tag.length.value, namestr))
-        print(',\n'.join(str(t.value) for t in tag.value))
-        print(indent_str * indent, '}', sep='')
-    else:
-        raise ValueError('unknown tag type')
 
