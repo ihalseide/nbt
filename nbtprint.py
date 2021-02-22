@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
-import nbt 
-from nbt import TAG_END, TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG, TAG_FLOAT, TAG_DOUBLE, TAG_STRING, TAG_LIST, TAG_BYTEARRAY, TAG_COMPOUND
+import nbt
 
 if __name__ == '__main__':
     import sys 
