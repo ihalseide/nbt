@@ -8,14 +8,14 @@ compound (11) "Level" = {
         compound (2) "ham" = {
             string [6] "name" = "Hampus"
             float "value" = 0.750000
-            end
+            (end)
         }
         compound (2) "egg" = {
             string [7] "name" = "Eggbert"
             float "value" = 0.500000
-            end
+            (end)
         }
-        end
+        (end)
     }
     list tag_byte[5] "listTest (long)" = {
         long = 11
@@ -28,16 +28,16 @@ compound (11) "Level" = {
         compound (2) = {
             string [15] "name" = "Compound tag #0"
             long "created-on" = 1264099775885
-            end
+            (end)
         }
         compound (2) = {
             string [15] "name" = "Compound tag #1"
             long "created-on" = 1264099775885
-            end
+            (end)
         }
     }
-    byte "byteTest" = 7F
-    byte array [1000] "byteArrayTest (the first 1000 values of (n*n*255+n*7)%100, starting with n=0 (0, 62, 34, 16, 8, ...))" = {...}
+    byte "byteTest" = 127
+    byte array [1000] "byteArrayTest (the first 1000 values of (n*n*255+n*7)%100, starting with n=0 (0, 62, 34, 16, 8, ...))" = { ... }
     double "doubleTest" = 0.493129
-    end
+    (end)
 }
