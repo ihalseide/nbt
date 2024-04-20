@@ -37,7 +37,7 @@ class TagKind(enum.IntEnum):
 
     @staticmethod
     def to_str(tag_type: int) -> str:
-        '''Get the string name for a tag type (a `TagKind`)'''
+        '''Get the string name for a tag type'''
         return TAG_NAMES[tag_type]
 
     @staticmethod
@@ -51,6 +51,7 @@ class TagKind(enum.IntEnum):
                             TagKind.LONG, TagKind.FLOAT, TagKind.DOUBLE)
 
 class Tag:
+    '''Main NBT data tag class.'''
 
     @staticmethod
     def as_name_tag(name) -> 'Tag':
@@ -64,27 +65,93 @@ class Tag:
             return result_tag
         else:
             raise TypeError()
+        
+    @staticmethod
+    def from_str(val: str, name: str|None = None) -> 'Tag':
+        if not isinstance(val, str): raise TypeError()
+        result = Tag(TagKind.STRING, name)
+        result.val_str = val
+        return result
+    
+    @staticmethod
+    def from_int(val: int, name: str|None = None) -> 'Tag':
+        if not isinstance(val, int): raise TypeError()
+        if _int_can_fit(val, 1): kind = TagKind.BYTE
+        elif _int_can_fit(val, 2): kind = TagKind.SHORT
+        elif _int_can_fit(val, 4): kind = TagKind.INT
+        elif _int_can_fit(val, 8): kind = TagKind.LONG
+        else:
+            raise OverflowError("cannot represent the integer value with a NBT long integer tag")
+        result = Tag(kind, name)
+        result.val_int = val
+        return result
+
+    @staticmethod
+    def from_float(val: float, name: str|None = None) -> 'Tag':
+        if not isinstance(val, float): raise TypeError()
+        result = Tag(TagKind.FLOAT, name)
+        result.val_float = val
+        return result
+    
+    @staticmethod
+    def from_double(val: float, name: str|None = None) -> 'Tag':
+        if not isinstance(val, float): raise TypeError()
+        result = Tag(TagKind.DOUBLE, name)
+        result.val_float = val
+        return result
+    
+    @staticmethod
+    def from_bytes(val: bytes, name: str|None = None) -> 'Tag':
+        '''Create a bytearray tag using bytes'''
+        if not isinstance(val, bytes): raise TypeError()
+        result = Tag(TagKind.BYTE_ARRAY, name)
+        result.val_bytes = val
+        return result
+    
+    @staticmethod
+    def from_list(val: tuple['Tag'], name: str|None = None) -> 'Tag':
+        '''Create a compound tag from a tuple of tags. Will add a end tag at the end if not already present.'''
+        if not isinstance(val, tuple): raise TypeError()
+        result = Tag(TagKind.COMPOUND, name)
+        result.val_list = list(val)
+        if result.val_list and result.val_list[-1].kind != TagKind.END:
+            result.val_list.append(Tag(TagKind.END))
+        return result
 
     def __init__(self, tag_type: TagKind, name: Self|str|None = None):
         self.kind: TagKind = tag_type
-        # Name is a TAG_STRING
-        self.name_tag: Tag|None = name if name is None else Tag.as_name_tag(name)
+        ## Name is a TAG_STRING
+        self.name_tag: Tag|None = name if (name is None) else Tag.as_name_tag(name)
         if self.name_tag is not None:
             assert(self.name_tag.kind == TagKind.STRING)
-        # Data will be the correct type based on self.tag_type
+        ## The `self.kind` determines Which of these values to actually use:
         self.val_float: float = 0
         self.val_int: int = 0
         self.val_list: list[Tag] = []
         self.val_bytes: bytes = bytes()
         self.val_str: str = ''
-        # Only used for list, string, bytearray, int_array, and long_array tag types
+        ## Only used for list, string, bytearray, int_array, and long_array tag types.
         self.length_tag: Tag|None = None
-        # Only used for the list tag type
+        ## Only used for the list tag type to keep track of the type of the array elements.
         self.item_type: Tag|None = None
 
     def get_value(self) -> Any:
-        # TODO
-        raise NotImplementedError()
+        '''Get the appropriate value type that this tag holds.'''
+        match self.kind:
+            case TagKind.END:
+                return None
+            case TagKind.BYTE_ARRAY: 
+                return self.val_bytes
+            case TagKind.STRING: 
+                return self.val_str
+            case TagKind.BYTE | TagKind.SHORT | TagKind.INT | TagKind.LONG: 
+                return self.val_int
+            case TagKind.FLOAT | TagKind.DOUBLE: 
+                return self.val_float
+            case TagKind.LIST | TagKind.COMPOUND | TagKind.INT_ARRAY | TagKind.LONG_ARRAY: 
+                return self.val_list
+            case _:
+                raise ValueError("this Tag has an unexpected TagKind")
 
     def get_name_str(self) -> str:
         if self.kind == TagKind.END:
@@ -153,6 +220,7 @@ class Tag:
         return 'Tag(%s)' % ', '.join(props)
 
     def __bytes__ (self) -> bytes:
+        '''Convert a Tag's inner data value (payload) to bytes.'''
         if TagKind.END == self.kind: 
             return bytes()
         elif TagKind.BYTE == self.kind:
@@ -203,8 +271,28 @@ class Tag:
             return bytes(items_bytes)
         else:
             raise ValueError('unknown tag type')
+        
+    def add_bytes_to(self, arr: bytearray, use_name=False):
+        '''Add full byte representation of the tag to the given array.'''
+        if use_name:
+            # Write tag type
+            arr.append(int(self.kind))
+            # Write name, but TAG_END cannot be named
+            if TagKind.END != self.kind:
+                assert(self.name_tag is not None)
+                self.name_tag.add_bytes_to(arr, use_name=False)
+            # Write payload
+            arr.extend(bytes(self))
+        else:
+            # Just write raw data
+            arr.extend(bytes(self))
 
-class NBTFile: 
+    def to_bytes(self, use_name=False) -> bytes:
+        '''Return full byte representation of the tag.'''
+        return self.add_bytes_to(bytearray(), use_name)
+
+class NBTFile:
+    '''Main NBT file class'''
 
     def __init__(self, file_name: str):
         # Unzip the file
@@ -224,7 +312,6 @@ class NBTFile:
         if not isinstance(name, str):
             raise TypeError('name must be a str')
         return self.nbt[name]
-
 
     def __setitem__(self, name, value):
         if type(name) != str:
@@ -309,17 +396,38 @@ def read_tag(file: BinaryIO|GzipFile, tag_type: TagKind) -> Tag:
         raise ValueError(f"cannot read data for unknown NBT tag type: {tag_type}")
     return tag_result
 
-def write_named_tag(file: BinaryIO, tag: Tag):
-    # Write tag type
-    tag_type = bytes(tag.kind)
-    assert(len(tag_type) == 1)
-    file.write(bytes(tag_type))
-    # Write name, but TAG_END cannot be named
-    if TagKind.END != tag.kind:
-        assert(tag.name_tag is not None)
-        write_tag(file, tag.name_tag)
-    # Write payload
-    write_tag(file, tag)
+def _write_tag(tag: Tag, file: BinaryIO|GzipFile, include_name=False):
+    '''Private method to implement `write_tag_to_file`.'''
+    if include_name:
+        # Write tag type
+        file.write(bytes(int(tag.kind)))
+        # Write name, but TAG_END cannot be named
+        if TagKind.END != tag.kind:
+            assert(tag.name_tag is not None)
+            _write_tag(tag.name_tag, file, include_name=False)
+        # Write payload
+        file.write(bytes(tag))
+    else:
+        # Just write raw data
+        file.write(bytes(tag))
 
-def write_tag(file: BinaryIO, tag: Tag) -> int:
-    return file.write(bytes(tag))
+def _write_tag_to_file(tag, file: BinaryIO|GzipFile):
+    _write_tag(tag, file, include_name=True)
+        
+def write_tag_to_file(tag: Tag, file: BinaryIO|GzipFile|str):
+    '''Write a compound NBT tag to a file.'''
+    if TagKind.COMPOUND != tag.kind:
+        raise ValueError("only a NBT compound tag should be written to a file")
+    if isinstance(file, str):
+        with gzip.open(file, 'wb') as f:
+            _write_tag_to_file(tag, f)
+    else:
+        _write_tag_to_file(tag, file)
+
+def _int_can_fit(x: int, num_bytes: int) -> bool:
+    '''Get if a signed integer can fit into and be represented by a certain number of bytes.'''
+    try:
+        int.to_bytes(x, num_bytes, signed=True)
+        return True
+    except OverflowError:
+        return False
