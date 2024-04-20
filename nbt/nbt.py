@@ -320,9 +320,11 @@ class NBTFile:
             raise TypeError('value must be an instance of Tag')
         self.nbt[name] = value
 
-
-def read_named_tag(file: BinaryIO|GzipFile): 
-    kind = TagKind(file.read(1)[0])
+def read_named_tag(file: BinaryIO|GzipFile) -> Tag:
+    try:
+        kind = TagKind(file.read(1)[0])
+    except EOFError:
+        return Tag(TagKind.END)
     if TagKind.END == kind:
         # TAG_END is an exception to the rule and cannot be named
         return Tag(TagKind.END)
@@ -330,7 +332,6 @@ def read_named_tag(file: BinaryIO|GzipFile):
     tag = read_tag(file, kind) 
     tag.name_tag = name_tag
     return tag
-
 
 def read_tag(file: BinaryIO|GzipFile, tag_type: TagKind) -> Tag:
     tag_result = Tag(tag_type)
@@ -374,9 +375,10 @@ def read_tag(file: BinaryIO|GzipFile, tag_type: TagKind) -> Tag:
         # Read a bunch of named tags until TAG_END
         compound = []
         item = read_named_tag(file)
+        compound.append(item)
         while TagKind.END != item.kind:
-            compound.append(item)
             item = read_named_tag(file)
+            compound.append(item)
         tag_result.val_list = compound
         # Add an extra length tag for consistency with the other list-like tags
         # TODO: should I keep this step?
@@ -395,24 +397,6 @@ def read_tag(file: BinaryIO|GzipFile, tag_type: TagKind) -> Tag:
     else:
         raise ValueError(f"cannot read data for unknown NBT tag type: {tag_type}")
     return tag_result
-
-def _write_tag(tag: Tag, file: BinaryIO|GzipFile, include_name=False):
-    '''Private method to implement `write_tag_to_file`.'''
-    if include_name:
-        # Write tag type
-        file.write(bytes(int(tag.kind)))
-        # Write name, but TAG_END cannot be named
-        if TagKind.END != tag.kind:
-            assert(tag.name_tag is not None)
-            _write_tag(tag.name_tag, file, include_name=False)
-        # Write payload
-        file.write(bytes(tag))
-    else:
-        # Just write raw data
-        file.write(bytes(tag))
-
-def _write_tag_to_file(tag, file: BinaryIO|GzipFile):
-    _write_tag(tag, file, include_name=True)
         
 def write_tag_to_file(tag: Tag, file: BinaryIO|GzipFile|str):
     '''Write a compound NBT tag to a file.'''
@@ -431,3 +415,22 @@ def _int_can_fit(x: int, num_bytes: int) -> bool:
         return True
     except OverflowError:
         return False
+    
+    
+def _write_tag(tag: Tag, file: BinaryIO|GzipFile, include_name=False):
+    '''Private method to implement `write_tag_to_file`.'''
+    if include_name:
+        # Write tag type
+        file.write(bytes(int(tag.kind)))
+        # Write name, but TAG_END cannot be named
+        if TagKind.END != tag.kind:
+            assert(tag.name_tag is not None)
+            _write_tag(tag.name_tag, file, include_name=False)
+        # Write payload
+        file.write(bytes(tag))
+    else:
+        # Just write raw data
+        file.write(bytes(tag))
+
+def _write_tag_to_file(tag, file: BinaryIO|GzipFile):
+    _write_tag(tag, file, include_name=True)
