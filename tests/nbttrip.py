@@ -14,8 +14,8 @@ if __name__ == '__main__':
 
     # .bin file is uncompressed
     with open('%s.bin' % filename_out, 'wb') as outfile:
-        nbt.write_named_tag(outfile, data.compound)
+        nbt.write_named_tag(outfile, data.nbt)
 
     # nbt file is compressed with gzip
     with gzip.open(filename_out, 'wb') as outfile:
-        nbt.write_named_tag(outfile, data.compound)
+        nbt.write_named_tag(outfile, data.nbt)

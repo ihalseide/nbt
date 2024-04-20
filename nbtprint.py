@@ -9,4 +9,4 @@ if __name__ == '__main__':
         sys.exit(-1) 
     filename = sys.argv[1]
     data = nbt.NBTFile(filename)
-    nbt.print_tag(data.compound) 
+    nbt.print_tag(data.nbt) 
