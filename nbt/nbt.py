@@ -76,10 +76,6 @@ class TagDataABC(ABC):
     def __bytes__ (self) -> bytes:
         raise NotImplementedError()
     
-    @abstractmethod
-    def __str__(self) -> str:
-        raise NotImplementedError()
-    
     @property
     def element_count(self) -> int:
         raise TypeError("this kind of tag has no element count aka length")
@@ -100,9 +96,6 @@ class TagEnd(TagDataABC):
         # Empty data
         return bytes()
     
-    def __str__(self) -> str:
-        return f"TagEnd()"
-    
 class TagByte(TagDataABC): 
 
     kind = TAG_BYTE
@@ -116,9 +109,6 @@ class TagByte(TagDataABC):
 
     def __bytes__(self) -> bytes:
         return struct.pack('>c', self.kind, self.val)
-    
-    def __str__(self) -> str:
-        return f"TagByte({self.val})"
     
 class TagShort(TagDataABC): 
 
@@ -134,9 +124,6 @@ class TagShort(TagDataABC):
     def __bytes__(self) -> bytes:
         return struct.pack('>h', self.val)
     
-    def __str__(self) -> str:
-        return f"TagShort({self.val})"
-    
 class TagInt(TagDataABC): 
 
     kind = TAG_INT
@@ -150,9 +137,6 @@ class TagInt(TagDataABC):
 
     def __bytes__(self) -> bytes:
         return struct.pack('>i', self.val)
-    
-    def __str__(self) -> str:
-        return f"TagInt({self.val})"
     
 class TagLong(TagDataABC): 
 
@@ -168,9 +152,6 @@ class TagLong(TagDataABC):
     def __bytes__(self) -> bytes:
         return struct.pack('>q', self.val)
     
-    def __str__(self) -> str:
-        return f"TagLong({self.val})"
-    
 class TagFloat(TagDataABC):
 
     kind = TAG_FLOAT
@@ -185,9 +166,6 @@ class TagFloat(TagDataABC):
     def __bytes__(self) -> bytes:
         return struct.pack('>f', self.val)
     
-    def __str__(self) -> str:
-        return f"TagFloat({self.val})"
-    
 class TagDouble(TagDataABC): 
 
     kind = TAG_DOUBLE
@@ -201,9 +179,6 @@ class TagDouble(TagDataABC):
 
     def __bytes__(self) -> bytes:
         return struct.pack('>d', self.val)
-    
-    def __str__(self) -> str:
-        return f"TagDouble({self.val})"
     
 class TagByteArray(TagDataABC): 
 
@@ -222,9 +197,6 @@ class TagByteArray(TagDataABC):
         result.extend(bytes(TagInt(self.element_count)))
         result.extend(self.val)
         return bytes(result)
-    
-    def __str__(self) -> str:
-        return f"TagByteArray({self.val})"
     
     @property
     def element_count(self) -> int:
@@ -250,9 +222,6 @@ class TagString(TagDataABC):
         result.extend(bytes(TagShort(self.element_count)))
         result.extend(self.val.encode('utf-8'))
         return bytes(result)
-    
-    def __str__(self) -> str:
-        return f"TagString({self.val})"
     
     @property
     def element_count(self) -> int:
@@ -286,10 +255,6 @@ class TagList(TagDataABC):
             result.extend(bytes(tag))
         return bytes(result)
     
-    def __str__(self) -> str:
-        xs = [str(x) for x in self.val]
-        return f"TagList(item_type={self._item_kind}, {xs})"
-    
     @property
     def element_count(self) -> int:
         return len(self.val)
@@ -319,10 +284,6 @@ class TagCompound(TagDataABC):
             result.extend(bytes(named_tag))
         return bytes(result)
     
-    def __str__(self) -> str:
-        xs = [str(x) for x in self.val]
-        return f"TagCompound({xs})"
-    
 class TagIntArray(TagDataABC):
 
     kind = TAG_INT_ARRAY
@@ -341,9 +302,6 @@ class TagIntArray(TagDataABC):
         for x in self.val:
             result.extend(bytes(TagInt(x)))
         return bytes(result)
-    
-    def __str__(self) -> str:
-        return f"TagIntArray({self.val})"
     
     @property
     def element_count(self) -> int:
@@ -367,9 +325,6 @@ class TagLongArray(TagDataABC):
         for x in self.val:
             result.extend(bytes(TagLong(x)))
         return bytes(result)
-    
-    def __str__(self) -> str:
-        return f"TagLongArray({self.val})"
     
     @property
     def element_count(self) -> int:
@@ -422,9 +377,6 @@ class NamedTag:
             arr.extend(bytes(self.name_tag))
             arr.extend(self.payload_bytes)
         return bytes(arr)
-    
-    def __str__(self) -> str:
-        return f"NamedTag(name=\"{self.name}\", kind={tag_kind_to_str(self.kind)}, payload={self.payload})"
     
 def tag_kind_to_str(tag_type: int) -> str:
     '''Get the string name for a tag type'''
