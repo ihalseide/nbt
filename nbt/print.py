@@ -1,8 +1,7 @@
 from .nbt import *
 
 def tag_get_print_name(tag_kind: int) -> str:
-    kind_str = TAG_NAMES[tag_kind]
-    return kind_str[:5].upper() + kind_str[5:]
+    return TAG_NAMES[tag_kind]
 
 def print_tag(tag: TagDataABC | NamedTag, indent=0, indent_str='  ', within_list=False, _name=''): 
     '''Print out an NBT tag and all of its contents in a mostly readable format, for debugging.'''
@@ -24,9 +23,9 @@ def print_tag(tag: TagDataABC | NamedTag, indent=0, indent_str='  ', within_list
             print(end=f"{tag_type_name}: ")
 
         if isinstance(tag, (TagByte, TagShort, TagInt, TagLong, TagFloat, TagDouble)):
-            print(end=str(tag.val))
+            print(end=str(tag.value))
         elif isinstance(tag, TagString):
-            print(end=f"\"{tag.val}\"")
+            print(end=f"\"{tag.value}\"")
         elif isinstance(tag, TagByteArray):
             if tag.element_count > 10:
                 print(end=f"[{tag.element_count} bytes]")
@@ -38,13 +37,13 @@ def print_tag(tag: TagDataABC | NamedTag, indent=0, indent_str='  ', within_list
         elif isinstance(tag, TagList):
             inner_type_name = tag_get_print_name(tag.element_kind)
             print(f"{tag.element_count} entries of type {inner_type_name} {{")
-            for tag_i in tag.val:
+            for tag_i in tag.value:
                 print_tag(tag_i, indent = indent + 1, indent_str = indent_str, within_list = True)
             print(end = indent_str * indent)
             print(end="}")
         elif isinstance(tag, TagCompound):
             print(f"{tag.element_count} entries {{")
-            for tag_j in tag.val:
+            for tag_j in tag.value:
                 print_tag(tag_j, indent = indent + 1, indent_str = indent_str)
         elif isinstance(tag, TagIntArray):
             if tag.element_count > 10:

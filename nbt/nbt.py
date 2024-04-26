@@ -4,23 +4,23 @@ NBT tag classes and types.
 
 import struct
 from gzip import GzipFile
-from typing import BinaryIO, override, Any, Iterable
+from typing import BinaryIO, override, Any, Iterable, Mapping
 from abc import ABC, abstractmethod
 
 TAG_NAMES = [
-    'tag_end',
-    'tag_byte',
-    'tag_short',
-    'tag_int',
-    'tag_long',
-    'tag_float',
-    'tag_double',
-    'tag_byte_array',
-    'tag_string',
-    'tag_list',
-    'tag_compound',
-    'tag_int_array',
-    'tag_long_array',
+    'TAG_End',
+    'TAG_Byte',
+    'TAG_Short',
+    'TAG_Int',
+    'TAG_Long',
+    'TAG_Float',
+    'TAG_Double',
+    'TAG_Byte_array',
+    'TAG_String',
+    'TAG_List',
+    'TAG_Compound',
+    'TAG_Int_array',
+    'TAG_Long_array',
 ]
 
 ## Tag kinds
@@ -48,8 +48,9 @@ ALL_TAG_TYPES = (
     TAG_LONG_ARRAY)
 
 class TagDataABC(ABC):
-    '''Abstract base class for the tag payload classes.'''
+    '''Abstract base class for all the NBT payload classes.'''
 
+    # Default tag type value
     kind = TAG_END
 
     @staticmethod
@@ -146,14 +147,14 @@ class TagByte(TagDataABC):
         return TagByte(cls.int_from_bytes(file.read(cls.size), cls.size))
     
     def __init__(self, val: int):
-        self.val = int(val)
+        self._val = int(val)
 
     def __bytes__(self) -> bytes:
-        return self.int_to_bytes(self.val, self.size)
+        return self.int_to_bytes(self._val, self.size)
     
     @property
     def value(self) -> int:
-        return self.val
+        return self._val
     
 class TagShort(TagDataABC): 
 
@@ -165,14 +166,14 @@ class TagShort(TagDataABC):
         return TagShort(cls.int_from_bytes(file.read(cls.size), cls.size))
     
     def __init__(self, val: int):
-        self.val = int(val)
+        self._val = int(val)
 
     def __bytes__(self) -> bytes:
-        return self.int_to_bytes(self.val, self.size)
+        return self.int_to_bytes(self._val, self.size)
     
     @property
     def value(self) -> int:
-        return self.val
+        return self._val
     
 class TagInt(TagDataABC): 
 
@@ -184,14 +185,14 @@ class TagInt(TagDataABC):
         return TagInt(cls.int_from_bytes(file.read(cls.size), cls.size))
     
     def __init__(self, val: int):
-        self.val = int(val)
+        self._val = int(val)
 
     def __bytes__(self) -> bytes:
-        return self.int_to_bytes(self.val, self.size)
+        return self.int_to_bytes(self._val, self.size)
     
     @property
     def value(self) -> int:
-        return self.val
+        return self._val
     
 class TagLong(TagDataABC): 
 
@@ -203,14 +204,14 @@ class TagLong(TagDataABC):
         return TagLong(cls.int_from_bytes(file.read(cls.size), cls.size))
     
     def __init__(self, val: int):
-        self.val = int(val)
+        self._val = int(val)
 
     def __bytes__(self) -> bytes:
-        return self.int_to_bytes(self.val, self.size)
+        return self.int_to_bytes(self._val, self.size)
     
     @property
     def value(self) -> int:
-        return self.val
+        return self._val
     
 class TagFloat(TagDataABC):
 
@@ -223,16 +224,16 @@ class TagFloat(TagDataABC):
         return TagFloat(x)
     
     def __init__(self, val: float):
-        self.val = float(val)
+        self._val = float(val)
 
     def __bytes__(self) -> bytes:
-        result = struct.pack('>f', self.val)
+        result = struct.pack('>f', self._val)
         assert(len(result) == self.size)
         return result
     
     @property
     def value(self) -> float:
-        return self.val
+        return self._val
     
 class TagDouble(TagDataABC): 
 
@@ -245,16 +246,16 @@ class TagDouble(TagDataABC):
         return TagDouble(x)
     
     def __init__(self, val: float):
-        self.val = float(val)
+        self._val = float(val)
 
     def __bytes__(self) -> bytes:
-        result = struct.pack('>d', self.val)
+        result = struct.pack('>d', self._val)
         assert(len(result) == self.size)
         return result
     
     @property
     def value(self) -> float:
-        return self.val
+        return self._val
     
 class TagByteArray(TagDataABC): 
 
@@ -262,30 +263,30 @@ class TagByteArray(TagDataABC):
 
     @classmethod
     def read_from_file(cls, file: BinaryIO | GzipFile) -> 'TagByteArray':
-        byte_count = TagInt.read_from_file(file).val
+        byte_count = TagInt.read_from_file(file)._val
         return TagByteArray(file.read(byte_count))
     
     def write_to_file_stepped(self, file: BinaryIO | GzipFile):
         '''Override the parent method so that this can be broken down into 2 write calls.'''
         TagInt(self.element_count).write_to_file_stepped(file)
-        file.write(self.val)
+        file.write(self._val)
     
     def __init__(self, val: bytes | Iterable[int]):
-        self.val = bytearray(val)
+        self._val = bytearray(val)
 
     def __bytes__(self) -> bytes:
         result = bytearray()
         result.extend(bytes(TagInt(self.element_count)))
-        result.extend(self.val)
+        result.extend(self._val)
         return bytes(result)
     
     @property
     def element_count(self) -> int:
-        return len(self.val)
+        return len(self._val)
     
     @property
     def value(self) -> bytearray:
-        return self.val
+        return self._val
     
 class TagString(TagDataABC): 
 
@@ -303,24 +304,24 @@ class TagString(TagDataABC):
     def write_to_file_stepped(self, file: BinaryIO | GzipFile):
         '''Override the parent method so that this can be broken down into 2 write calls.'''
         TagShort(self.element_count).write_to_file_stepped(file)
-        file.write(self.val.encode())
+        file.write(self._val.encode())
     
     def __init__(self, val: str):
-        self.val = str(val)
+        self._val = str(val)
 
     def __bytes__(self) -> bytes:
         result = bytearray()
         result.extend(bytes(TagShort(self.element_count)))
-        result.extend(self.val.encode('utf-8'))
+        result.extend(self._val.encode('utf-8'))
         return bytes(result)
     
     @property
     def element_count(self) -> int:
-        return len(self.val)
+        return len(self._val)
     
     @property
     def value(self) -> str:
-        return self.val
+        return self._val
     
 class TagList(TagDataABC): 
 
@@ -328,8 +329,8 @@ class TagList(TagDataABC):
 
     @classmethod
     def read_from_file(cls, file: BinaryIO | GzipFile) -> 'TagList':
-        item_kind = TagByte.read_from_file(file).val
-        item_count = TagInt.read_from_file(file).val
+        item_kind = TagByte.read_from_file(file)._val
+        item_count = TagInt.read_from_file(file)._val
         the_class = TagDataABC.kind_to_class_type(item_kind)
         return TagList(item_kind, [the_class.read_from_file(file) for _ in range(item_count)])
     
@@ -338,33 +339,41 @@ class TagList(TagDataABC):
         '''Override the parent method so that this can be broken down into 2 write calls.'''
         TagByte(self.element_kind).write_to_file_stepped(file)
         TagShort(self.element_count).write_to_file_stepped(file)
-        for tag in self.val:
+        for tag in self._val:
             tag.write_to_file_stepped(file)
     
-    def __init__(self, item_kind: int|TagDataABC, val: list[TagDataABC]):
-        self.val = list(val)
+    def __init__(self, item_kind: int|TagDataABC, val: Iterable[TagDataABC]):
+        self._val = list()
+
+        # Set item_kind (element type)
         if isinstance(item_kind, int):
             self._item_kind = item_kind
         elif isinstance(item_kind, (TagByte, TagShort, TagInt, TagLong)):
             # Extract value from integer tag
-            self._item_kind = item_kind.val
+            self._item_kind = item_kind._val
         else:
             raise TypeError("`item_kind` must be an int or a int-like kind of TagDataABC")
-        for i, tag_i in enumerate(self.val):
+        
+        # Set and check the elements
+        for i, tag_i in enumerate(val):
+            if not isinstance(tag_i, TagDataABC):
+                raise TypeError(f"item \"{tag_i}\", is not an instance of `TagDataABC`")
             if tag_i.kind != self._item_kind:
-                raise TypeError(f"NBT item at index {i} is not the same type as the TagList's expected item type")
+                expected_type = tag_kind_to_str(self._item_kind)
+                raise TypeError(f"NBT item {tag_i}, does not have the same NBT type as the TagList's expected item type: {expected_type}")
+            self._val.append(tag_i)
         
     def __bytes__(self) -> bytes:
         result = bytearray()
         result.extend(bytes(TagByte(self._item_kind)))
         result.extend(bytes(TagInt(self.element_count)))
-        for tag in self.val:
+        for tag in self._val:
             result.extend(bytes(tag))
         return bytes(result)
     
     @property
     def element_count(self) -> int:
-        return len(self.val)
+        return len(self._val)
     
     @property
     def element_kind(self) -> int:
@@ -372,9 +381,14 @@ class TagList(TagDataABC):
     
     @property
     def value(self) -> list[TagDataABC]:
-        return self.val
+        return self._val
     
 class TagCompound(TagDataABC):
+    '''
+    A `TagCompound` is an non-homogeneous container for NBT tags.
+    NOTE: this class will automatically ensure that the value ends with a `TagEnd` tag.
+    NOTE: if this tag's value has any tags after a TagEnd, those tags will not be included when written to a file or converted to bytes.
+    '''
 
     kind = TAG_COMPOUND
 
@@ -389,14 +403,35 @@ class TagCompound(TagDataABC):
             tags.append(tag)
         return TagCompound(tags)
     
-    def __init__(self, val: list['NamedTag']):
-        self.val = list(val)
-        self.ensure_end()
+    def __init__(self, val: Iterable['NamedTag'] | Mapping[str, TagDataABC]):
+        '''
+        Create a new `TagCompound` with either a sequence of `NamedTag`s or a dict that maps
+        `str`s to instances that inherit from `TagDataABC`.
+        '''
+        self._val = list()
+        if isinstance(val, dict):
+            ## Initialize from a dictionary that maps names to tag data
+            for name, tag in val.items():
+                if not isinstance(name, str):
+                    raise TypeError("name is not a `str`")
+                if not isinstance(tag, TagDataABC):
+                    raise TypeError(f"item \"{tag}\" is not a `TagDataABC` instance")
+                self._val.append(NamedTag(name, tag))
+            self.ensure_end()
+        elif isinstance(val, list):
+            ## Initialize from a list of named tags
+            for named_tag in val:
+                if not isinstance(named_tag, NamedTag):
+                    raise TypeError("named_tag is not a `NamedTag` instance")
+                self._val.append(named_tag)
+            self.ensure_end()
+        else:
+            raise TypeError("must initialize a TagCompound from a list of `NamedTag`s or from a `dict` that maps `str`s to `TagDataABC`s")
 
     def __bytes__(self) -> bytes:
         self.ensure_end()
         result = bytearray()
-        for named_tag in self.val:
+        for named_tag in self._val:
             result.extend(bytes(named_tag))
             # Don't write any tags after the first TagEnd is encountered
             if named_tag.kind == TAG_END:
@@ -406,22 +441,22 @@ class TagCompound(TagDataABC):
     def append_before_end(self, tag: 'NamedTag'):
         '''Append a named tag to this compound list, making sure it comes before the TAG_END tag.'''
         self.ensure_end()
-        self.val.insert(-1, tag)
+        self._val.insert(-1, tag)
     
     def ensure_end(self) -> None:
         '''Make sure this TagCompound's values array ends with a TAG_END tag.'''
-        if (not len(self.val)) or (self.val[-1].kind != TAG_END):
-            self.val.append(NamedTag('', TagEnd()))
+        if (not len(self._val)) or (self._val[-1].kind != TAG_END):
+            self._val.append(NamedTag('', TagEnd()))
     
     @override
     @property
     def element_count(self) -> int:
         # Subtract 1 because the end tag at the end doesn't count
-        return len(self.val) - 1
+        return len(self._val) - 1
     
     @property
     def value(self) -> list['NamedTag']:
-        return self.val
+        return self._val
     
 class TagIntArray(TagDataABC):
 
@@ -429,26 +464,26 @@ class TagIntArray(TagDataABC):
 
     @classmethod
     def read_from_file(cls, file: BinaryIO | GzipFile) -> 'TagIntArray':
-        count = TagInt.read_from_file(file).val
-        return TagIntArray([TagInt.read_from_file(file).val for _ in range(count)])
+        count = TagInt.read_from_file(file)._val
+        return TagIntArray([TagInt.read_from_file(file)._val for _ in range(count)])
     
-    def __init__(self, val: list[int]):
-        self.val = list(int(x) for x in val)
+    def __init__(self, val: Iterable[int]):
+        self._val = list(int(x) for x in val)
 
     def __bytes__(self) -> bytes:
         result = bytearray()
         result.extend(bytes(TagInt(self.element_count)))
-        for x in self.val:
+        for x in self._val:
             result.extend(bytes(TagInt(x)))
         return bytes(result)
     
     @property
     def element_count(self) -> int:
-        return len(self.val)
+        return len(self._val)
     
     @property
     def value(self) -> list[int]:
-        return self.val
+        return self._val
     
 class TagLongArray(TagDataABC):
 
@@ -456,26 +491,26 @@ class TagLongArray(TagDataABC):
 
     @classmethod
     def read_from_file(cls, file: BinaryIO | GzipFile) -> 'TagLongArray':
-        count = TagInt.read_from_file(file).val
-        return TagLongArray([TagLong.read_from_file(file).val for _ in range(count)])
+        count = TagInt.read_from_file(file)._val
+        return TagLongArray([TagLong.read_from_file(file)._val for _ in range(count)])
     
-    def __init__(self, val: list[int]):
-        self.val = list(int(x) for x in val)
+    def __init__(self, val: Iterable[int]):
+        self._val = list(int(x) for x in val)
 
     def __bytes__(self) -> bytes:
         result = bytearray()
         result.extend(bytes(TagInt(self.element_count)))
-        for x in self.val:
+        for x in self._val:
             result.extend(bytes(TagLong(x)))
         return bytes(result)
     
     @property
     def element_count(self) -> int:
-        return len(self.val)
+        return len(self._val)
     
     @property
     def value(self) -> list[int]:
-        return self.val
+        return self._val
     
 class NamedTag:
 
@@ -503,11 +538,13 @@ class NamedTag:
             return NamedTag(name_tag, payload)
 
     def __init__(self, name: str | TagString, payload: TagDataABC):
-        '''Create a NamedTag with a name and a tag payload.'''
+        '''Create a `NamedTag` with a `name` string and a NBT tag `payload`.'''
+        if not isinstance(payload, TagDataABC):
+            raise TypeError("a `NamedTag` must be initialized with a payload that is an instance of `TagDataABC`")
         self.name: str = ''
         self.payload: TagDataABC = payload
         if isinstance(name, TagString):
-            self.name = str(name.val)
+            self.name = str(name._val)
         else:
             self.name = str(name)
 
