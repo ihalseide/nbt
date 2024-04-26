@@ -1,5 +1,5 @@
 '''
-NBT tag classes and types.
+Classes for NBT tags that fully contain data from a file.
 '''
 
 import struct
@@ -118,14 +118,22 @@ class TagDataABC(ABC):
         raise NotImplementedError()
     
     @property
+    def kind_tag(self) -> 'TagByte':
+        return TagByte(self.kind)
+    
+    @property
     def element_count(self) -> int:
         type_name = tag_kind_to_str(self.kind)
         raise TypeError(f"this kind of tag, {type_name}, has no element count aka length")
     
     @property
-    def element_kind(self) -> int:
+    def element_kind_tag(self) -> 'TagByte':
         type_name = tag_kind_to_str(self.kind)
         raise TypeError(f"this kind of tag, {type_name} has no element kind")
+    
+    @property
+    def kind_name(self) -> str:
+        return TAG_NAMES[self.kind]
     
     def __str__(self) -> str:
         type_name = type(self).__name__
@@ -350,20 +358,20 @@ class TagList(TagDataABC):
     @override
     def write_to_file_stepped(self, file: BinaryIO | GzipFile):
         '''Override the parent method so that this can be broken down into 2 write calls.'''
-        TagByte(self.element_kind).write_to_file_stepped(file)
+        self.element_kind_tag.write_to_file_stepped(file)
         TagShort(self.element_count).write_to_file_stepped(file)
         for tag in self._val:
             tag.write_to_file_stepped(file)
     
-    def __init__(self, item_kind: int|TagDataABC, val: Iterable[TagDataABC]):
+    def __init__(self, item_kind: int|TagByte, val: Iterable[TagDataABC]):
         self._val = list()
 
         # Set item_kind (element type)
         if isinstance(item_kind, int):
             self._item_kind = item_kind
-        elif isinstance(item_kind, (TagByte, TagShort, TagInt, TagLong)):
+        elif isinstance(item_kind, TagByte):
             # Extract value from integer tag
-            self._item_kind = item_kind._val
+            self._item_kind = item_kind.value
         else:
             raise TypeError("`item_kind` must be an int or a int-like kind of TagDataABC")
         
@@ -389,8 +397,8 @@ class TagList(TagDataABC):
         return len(self._val)
     
     @property
-    def element_kind(self) -> int:
-        return self._item_kind
+    def element_kind_tag(self) -> TagByte:
+        return TagByte(self._item_kind)
     
     @property
     def value(self) -> list[TagDataABC]:
@@ -564,22 +572,26 @@ class NamedTag:
     def __str__(self) -> str:
         type_name = type(self).__name__
         return f"{type_name}(name=\"{self.name}\", payload={self.payload})"
-
-    def write_to_file(self, file: BinaryIO | GzipFile) -> int:
-        '''
-        Write all of this named tag's data to a file by constructing
-        the byte buffer first and then writing it all at once.
-        '''
-        return file.write(bytes(self))
-    
-    def write_to_file_stepped(self, file: BinaryIO | GzipFile):
-        file.write(bytes(self.name_tag))
-        self.payload.write_to_file_stepped(file)
         
     @property
     def kind(self) -> int:
         '''Get this named tag's tag kind.'''
         return self.payload.kind
+    
+    @property
+    def kind_tag(self) -> TagByte:
+        '''Get the TabByte that indicates the NBT payload tag type'''
+        return self.payload.kind_tag
+    
+    @property
+    def kind_int(self) -> int:
+        '''Get the int that indicates the NBT payload tag type'''
+        return self.payload.kind
+    
+    @property
+    def kind_name(self) -> str:
+        '''Get the name str that indicates the NBT payload tag type'''
+        return self.payload.kind_name
     
     @property
     def payload_bytes(self) -> bytes:
@@ -592,10 +604,27 @@ class NamedTag:
         return TagString(self.name)
     
     def __bytes__(self) -> bytes:
+        '''Convert this entire named tag to bytes, including type, name, and tag payload.'''
         arr = bytearray()
         arr.append(self.kind)
-        if self.kind != TAG_END: # TAG_END cannot be named and has no data payload
+        if not isinstance(self.payload, TagEnd): # TAG_END cannot be named and has no data payload
             arr.extend(bytes(self.name_tag))
             arr.extend(self.payload_bytes)
         return bytes(arr)
+    
+    def write_to_file(self, file: BinaryIO | GzipFile) -> int:
+        '''
+        Write all of this named tag's data to a file by creating the byte buffer first and then writing it all at once.
+        '''
+        return file.write(bytes(self))
+    
+    def write_to_file_stepped(self, file: BinaryIO | GzipFile):
+        '''
+        Write all of this named tag's data to a file by calling the `write_to_file_stepped` method on all sub-tags.
+        This can prevent converting the whole structure to bytes before writing to a file, so it might be more performant.
+        '''
+        self.kind_tag.write_to_file_stepped(file)
+        if not isinstance(self.payload, TagEnd): # TAG_END cannot be named and has no data payload
+            self.name_tag.write_to_file_stepped(file)
+            self.payload.write_to_file_stepped(file)
     

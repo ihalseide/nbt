@@ -1,4 +1,4 @@
-from .nbt import *
+from .full import *
 
 def tag_get_print_name(tag_kind: int) -> str:
     return TAG_NAMES[tag_kind]
@@ -35,7 +35,7 @@ def print_tag(tag: TagDataABC | NamedTag, indent=0, indent_str='  ', within_list
                     print(end = f"{b:02X} ")
                 print(end="]")
         elif isinstance(tag, TagList):
-            inner_type_name = tag_get_print_name(tag.element_kind)
+            inner_type_name = TagDataABC.kind_to_class_type(tag.element_kind_tag.value)
             print(f"{tag.element_count} entries of type {inner_type_name} {{")
             for tag_i in tag.value:
                 print_tag(tag_i, indent = indent + 1, indent_str = indent_str, within_list = True)

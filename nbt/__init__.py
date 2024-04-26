@@ -1,3 +1,3 @@
-from .nbt import * 
+from .full import * 
 from .print import * 
 
