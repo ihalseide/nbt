@@ -2,6 +2,8 @@
 
 This is a Python libary for working with Named Binary Tag (NBT) files and data structures.
 
+**NOTE**: this Python package is not fully set up yet (will fix).
+
 ## Named Binary Tags
 
 For the specification for NBT, see the file "Named Binary Tags.txt", which is taken from Markus Perrson's [original specification](https://web.archive.org/web/20110723210920/http://www.minecraft.net/docs/NBT.txt).
