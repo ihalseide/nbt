@@ -487,14 +487,20 @@ class NamedTag:
         '''
         ## Read the tag type byte
         try:
-            kind = file.read(1)[0]
+            kind = TagByte.read_from_file(file)
         except (IndexError, EOFError):
             return NamedTag("", TagEnd())
-        ## Read the tag name (string tag)
-        name_tag = TagString.read_from_file(file)
-        ## Read the tag payload pay
-        payload = TagDataABC.dispatch_read_from_file(kind, file)
-        return NamedTag(name_tag, payload)
+        if kind.value not in ALL_TAG_TYPES:
+            raise ValueError(f"invalid tag type: {kind.value}")
+        if kind.value == TAG_END:
+            ## No name or payload for TagEnd
+            return NamedTag("", TagEnd())
+        else:
+            ## Read the tag name (string tag)
+            name_tag = TagString.read_from_file(file)
+            ## Read the tag payload pay
+            payload = TagDataABC.dispatch_read_from_file(kind.value, file)
+            return NamedTag(name_tag, payload)
 
     def __init__(self, name: str | TagString, payload: TagDataABC):
         '''Create a NamedTag with a name and a tag payload.'''
