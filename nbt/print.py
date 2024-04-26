@@ -1,3 +1,4 @@
+from .constants import *
 from .full import *
 
 def tag_get_print_name(tag_kind: int) -> str:
