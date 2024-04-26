@@ -389,7 +389,7 @@ class TagCompound(TagDataABC):
         Create a new `TagCompound` with either a sequence of `NamedTag`s or a dict that maps
         `str`s to instances that inherit from `TagDataABC`.
         '''
-        self._val = list()
+        self._val: list[NamedTag] = list()
         if isinstance(val, dict):
             ## Initialize from a dictionary that maps names to tag data
             for name, tag in val.items():
@@ -398,19 +398,19 @@ class TagCompound(TagDataABC):
                 if not isinstance(tag, TagDataABC):
                     raise TypeError(f"item \"{tag}\" is not a `TagDataABC` instance")
                 self._val.append(NamedTag(name, tag))
-            self.ensure_end()
+            self._ensure_end()
         elif isinstance(val, list):
             ## Initialize from a list of named tags
             for named_tag in val:
                 if not isinstance(named_tag, NamedTag):
                     raise TypeError("named_tag is not a `NamedTag` instance")
                 self._val.append(named_tag)
-            self.ensure_end()
+            self._ensure_end()
         else:
             raise TypeError("must initialize a TagCompound from a list of `NamedTag`s or from a `dict` that maps `str`s to `TagDataABC`s")
 
     def __bytes__(self) -> bytes:
-        self.ensure_end()
+        assert(len(self._val) > 0 and isinstance(self._val[-1], TagEnd))
         result = bytearray()
         for named_tag in self._val:
             result.extend(bytes(named_tag))
@@ -419,15 +419,11 @@ class TagCompound(TagDataABC):
                 break
         return bytes(result)
     
-    def append_before_end(self, tag: 'NamedTag'):
-        '''Append a named tag to this compound list, making sure it comes before the TAG_END tag.'''
-        self.ensure_end()
-        self._val.insert(-1, tag)
-    
-    def ensure_end(self) -> None:
+    def _ensure_end(self) -> None:
         '''Make sure this TagCompound's values array ends with a TAG_END tag.'''
         if (not len(self._val)) or (self._val[-1].kind != TAG_END):
             self._val.append(NamedTag('', TagEnd()))
+        assert(len(self._val) >= 1)
     
     @override
     @property
@@ -438,6 +434,26 @@ class TagCompound(TagDataABC):
     @property
     def value(self) -> list['NamedTag']:
         return self._val
+    
+    def get_many(self, name: str) -> set[TagDataABC]:
+        '''
+        Get the set of tags that have the given name.
+        This method is supported just because a non-standard NBT file may have multiple tags with the same name.
+        '''
+        result: set[TagDataABC] = set()
+        for named_tag in self._val:
+            if named_tag.name == name:
+                result.add(named_tag.payload)
+        return result
+    
+    def __getitem__(self, key: str) -> TagDataABC:
+        '''Get the first tag found that has the given name. See also: the `get_tags_named` method.'''
+        if not isinstance(key, str):
+            raise TypeError("index `key` must be a `str`")
+        for named_tag in self._val:
+            if named_tag.name == key:
+                return named_tag.payload
+        raise KeyError(f"this TagCompound has no tag item named \"{key}\"")
     
 class TagIntArray(TagDataABC):
 
