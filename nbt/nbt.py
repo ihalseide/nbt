@@ -118,6 +118,10 @@ class TagDataABC(ABC):
         type_name = tag_kind_to_str(self.kind)
         raise TypeError(f"this kind of tag, {type_name} has no element kind")
     
+    def __str__(self) -> str:
+        type_name = type(self).__name__
+        return f"{type_name}()"
+    
 class TagEnd(TagDataABC):
 
     kind = TAG_END
@@ -547,6 +551,10 @@ class NamedTag:
             self.name = str(name._val)
         else:
             self.name = str(name)
+
+    def __str__(self) -> str:
+        type_name = type(self).__name__
+        return f"{type_name}(name=\"{self.name}\", payload={self.payload})"
 
     def write_to_file(self, file: BinaryIO | GzipFile) -> int:
         '''
