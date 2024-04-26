@@ -3,8 +3,8 @@ NBT tag classes and types.
 '''
 
 import struct
-from gzip import GzipFile
 from typing import BinaryIO, override, Any, Iterable, Mapping
+from gzip import GzipFile # just import for the type
 from abc import ABC, abstractmethod
 
 TAG_NAMES = [
@@ -46,6 +46,15 @@ ALL_TAG_TYPES = (
     TAG_STRING, TAG_LIST, 
     TAG_COMPOUND, TAG_INT_ARRAY, 
     TAG_LONG_ARRAY)
+
+assert(len(ALL_TAG_TYPES) == len(TAG_NAMES))
+
+def tag_kind_to_str(tag_type: int) -> str:
+    '''Get the string name for a tag type'''
+    try:
+        return TAG_NAMES[tag_type]
+    except IndexError:
+        raise ValueError("value does not represent a type of tag")
 
 class TagDataABC(ABC):
     '''Abstract base class for all the NBT payload classes.'''
@@ -590,17 +599,3 @@ class NamedTag:
             arr.extend(self.payload_bytes)
         return bytes(arr)
     
-def tag_kind_to_str(tag_type: int) -> str:
-    '''Get the string name for a tag type'''
-    try:
-        return TAG_NAMES[tag_type]
-    except IndexError:
-        raise ValueError("value does not represent a type of tag")
-
-def tag_is_list_kind(tag_type: int) -> bool:
-    return int(tag_type) in (TAG_BYTE_ARRAY, TAG_STRING, TAG_LIST,
-                        TAG_COMPOUND, TAG_INT_ARRAY, TAG_LONG_ARRAY)
-
-def tag_is_atom_kind(tag_type: int) -> bool:
-    return int(tag_type) in (TAG_BYTE, TAG_SHORT, TAG_INT,
-                        TAG_LONG, TAG_FLOAT, TAG_DOUBLE)
