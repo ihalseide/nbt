@@ -22,6 +22,9 @@ class TagDataABC(ABC):
     # Default tag type value
     kind = TAG_END
 
+    def name(self) -> str:
+        return TAG_NAMES[self.kind]
+
     @staticmethod
     def int_from_bytes(b: bytes, length: int) -> int:
         '''
@@ -367,6 +370,7 @@ class TagList(TagDataABC):
 class TagCompound(TagDataABC):
     '''
     A `TagCompound` is an non-homogeneous container for NBT tags.
+    NOTE: TagCompound instances are not meant to be mutated.
     NOTE: this class will automatically ensure that the value ends with a `TagEnd` tag.
     NOTE: if this tag's value has any tags after a TagEnd, those tags will not be included when written to a file or converted to bytes.
     '''
@@ -389,7 +393,7 @@ class TagCompound(TagDataABC):
         Create a new `TagCompound` with either a sequence of `NamedTag`s or a dict that maps
         `str`s to instances that inherit from `TagDataABC`.
         '''
-        self._val: list[NamedTag] = list()
+        temp_val: list[NamedTag] = list()
         if isinstance(val, dict):
             ## Initialize from a dictionary that maps names to tag data
             for name, tag in val.items():
@@ -397,17 +401,17 @@ class TagCompound(TagDataABC):
                     raise TypeError("name is not a `str`")
                 if not isinstance(tag, TagDataABC):
                     raise TypeError(f"item \"{tag}\" is not a `TagDataABC` instance")
-                self._val.append(NamedTag(name, tag))
-            self._ensure_end()
+                temp_val.append(NamedTag(name, tag))
         elif isinstance(val, list):
             ## Initialize from a list of named tags
             for named_tag in val:
                 if not isinstance(named_tag, NamedTag):
                     raise TypeError("named_tag is not a `NamedTag` instance")
-                self._val.append(named_tag)
-            self._ensure_end()
+                temp_val.append(named_tag)
         else:
             raise TypeError("must initialize a TagCompound from a list of `NamedTag`s or from a `dict` that maps `str`s to `TagDataABC`s")
+        self._ensure_end(temp_val)
+        self._val: tuple[NamedTag, ...] = tuple(temp_val)
 
     def __bytes__(self) -> bytes:
         assert(len(self._val) > 0 and isinstance(self._val[-1], TagEnd))
@@ -419,11 +423,11 @@ class TagCompound(TagDataABC):
                 break
         return bytes(result)
     
-    def _ensure_end(self) -> None:
+    def _ensure_end(self, tag_list: list['NamedTag']):
         '''Make sure this TagCompound's values array ends with a TAG_END tag.'''
-        if (not len(self._val)) or (self._val[-1].kind != TAG_END):
-            self._val.append(NamedTag('', TagEnd()))
-        assert(len(self._val) >= 1)
+        if (not len(tag_list)) or (not isinstance(tag_list[-1], TagEnd)):
+            tag_list.append(NamedTag('', TagEnd()))
+        assert(len(tag_list) >= 1)
     
     @override
     @property
@@ -433,7 +437,7 @@ class TagCompound(TagDataABC):
     
     @property
     def value(self) -> list['NamedTag']:
-        return self._val
+        return list(self._val)
     
     def get_many(self, name: str) -> set[TagDataABC]:
         '''
@@ -454,6 +458,23 @@ class TagCompound(TagDataABC):
             if named_tag.name == key:
                 return named_tag.payload
         raise KeyError(f"this TagCompound has no tag item named \"{key}\"")
+    
+    def with_update(self, named_tag: 'NamedTag') -> 'TagCompound':
+        '''Return a new TagCompound that has the given tag added to it'''
+        return self.with_updates([named_tag])
+    
+    def with_updates(self, named_tags: Iterable['NamedTag']) -> 'TagCompound':
+        '''Return a new TagCompound that has the given tags added to it'''
+        new_val: list[NamedTag] = []
+        for named in self._val:
+            new_val.append(named)
+        for named in named_tags:
+            new_val.append(named)
+        return TagCompound(new_val)
+    
+    def to_dict(self) -> dict[str, TagDataABC]:
+        '''Get a dict that maps tag names to tag data payloads within this TagCompound's values.'''
+        return { named_tag.name: named_tag.payload for named_tag in self._val }
     
 class TagIntArray(TagDataABC):
 
