@@ -1,5 +1,5 @@
 '''
-Create-read-write test.
+Create-read-write test for the nbt module.
 '''
 
 import nbt
@@ -8,9 +8,12 @@ from nbt import NamedTag, TagCompound, TagString
 from nbt import print_tag
 
 print("Creating...")
+# <EditMe>
+# test whatever for the value of x
 x = NamedTag("root", TagCompound([
     
 ]))
+# </EditMe>
 print("x =", x)
 print_tag(x)
 
