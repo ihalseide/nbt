@@ -3,9 +3,8 @@ Classes for NBT tags that fully contain the data payload from a file.
 '''
 
 import struct
-from typing import BinaryIO, override, Any, Iterable, Mapping, ItemsView, Generator, Union, Literal
+from typing import BinaryIO, Any, Iterable, Mapping
 from gzip import GzipFile # imported for the type annotation
-from abc import ABC, abstractmethod
 
 from nbt.constants import TAG_END
 
