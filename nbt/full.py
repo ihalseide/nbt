@@ -1,5 +1,5 @@
 '''
-Classes for NBT tags that fully contain data from a file.
+Classes for NBT tags that fully contain the data payload from a file.
 '''
 
 import struct
@@ -9,12 +9,43 @@ from abc import ABC, abstractmethod
 
 from .constants import *
 
+def file_expect_read(file: GzipFile | BinaryIO, size: int) -> bytes:
+    '''Read exactly 'size' bytes from the 'file' or raise an 'EOFError' if end of file is reached.'''
+    result = file.read(size)
+    if (actual_length := len(result)) < size:
+        raise EOFError(f"expected to read {size} bytes but only got {actual_length} bytes")
+    return result
+
+def nbt_int_from_bytes(b: bytes, length: int) -> int:
+    '''
+    Convenience function for converting integer from bytes consistently for all of the int-like tag classes
+    NOTE: should be synchronized with the 'nbt_int_to_bytes' function
+    '''
+    if len(b) != length:
+        raise ValueError(f"not enough bytes for data type of length {length} (only found {len(b)} bytes)")
+    return int.from_bytes(b, byteorder='big', signed=True)
+
+def nbt_int_to_bytes(x: int, length: int) -> bytes:
+    '''NOTE: should be synchronized with the 'nbt_int_from_bytes' function'''
+    return x.to_bytes(length, byteorder='big', signed=True)
+
+def expect_read_int(file: GzipFile | BinaryIO, size: int) -> int:
+    return nbt_int_from_bytes(file_expect_read(file, size), size)
+
+def int_sized(x: Any, size_bytes: int) -> int:
+    '''Convert a value to int and make sure it can be represented by at most 'size_bytes' bytes.
+    Raises a 'ValueError' otherwise.'''
+    result = int(x)
+    if (result.bit_length() / 8.0) > size_bytes:
+        raise ValueError(f"magnitude of integer value '{result}' is too large to fir within a {size_bytes}-byte representation")
+    return result
+
 def tag_kind_to_str(tag_type: int) -> str:
     '''Get the string name for a tag type'''
     try:
         return TAG_NAMES[tag_type]
     except IndexError:
-        raise ValueError("value does not represent a type of tag")
+        raise ValueError("int value does not represent a type of NBT tag")
 
 class TagDataABC(ABC):
     '''Abstract base class for all the NBT payload classes.'''
@@ -24,21 +55,6 @@ class TagDataABC(ABC):
 
     def name(self) -> str:
         return TAG_NAMES[self.kind]
-
-    @staticmethod
-    def int_from_bytes(b: bytes, length: int) -> int:
-        '''
-        Convenience function for converting integer to bytes consistently for all of the int-like tag classes
-        NOTE: should be synchronized with the 'int_to_bytes' method
-        '''
-        if len(b) != length:
-            raise ValueError(f"not enough bytes for data type of length {length}")
-        return int.from_bytes(b, byteorder='big', signed=True)
-
-    @staticmethod
-    def int_to_bytes(x: int, length: int) -> bytes:
-        '''NOTE: should be synchronized with the 'int_from_bytes' method'''
-        return x.to_bytes(length, byteorder='big', signed=True)
 
     @staticmethod
     def kind_to_class_type(tag_kind: int) -> type['TagDataABC']:
@@ -61,7 +77,8 @@ class TagDataABC(ABC):
 
     @staticmethod
     def dispatch_read_from_file(tag_kind: int, file: BinaryIO | GzipFile) -> 'TagDataABC':
-        return TagDataABC.kind_to_class_type(tag_kind).read_from_file(file)
+        tag_class = TagDataABC.kind_to_class_type(tag_kind)
+        return tag_class.read_from_file(file)
     
     @classmethod
     @abstractmethod
@@ -170,13 +187,13 @@ class TagByte(TagDataABC):
 
     @classmethod
     def read_from_file(cls, file: BinaryIO | GzipFile) -> 'TagByte':
-        return TagByte(cls.int_from_bytes(file.read(cls.size), cls.size))
+        return TagByte(nbt_int_from_bytes(file.read(cls.size), cls.size))
     
     def __init__(self, val: int):
-        self._val = int(val)
+        self._val = int_sized(val, self.size)
 
     def __bytes__(self) -> bytes:
-        return self.int_to_bytes(self._val, self.size)
+        return nbt_int_to_bytes(self._val, self.size)
     
     @property
     def value(self) -> int:
@@ -189,13 +206,13 @@ class TagShort(TagDataABC):
 
     @classmethod
     def read_from_file(cls, file: BinaryIO | GzipFile) -> 'TagShort':
-        return TagShort(cls.int_from_bytes(file.read(cls.size), cls.size))
+        return TagShort(expect_read_int(file, cls.size))
     
     def __init__(self, val: int):
-        self._val = int(val)
+        self._val = int_sized(val, self.size)
 
     def __bytes__(self) -> bytes:
-        return self.int_to_bytes(self._val, self.size)
+        return nbt_int_to_bytes(self._val, self.size)
     
     @property
     def value(self) -> int:
@@ -208,13 +225,13 @@ class TagInt(TagDataABC):
 
     @classmethod
     def read_from_file(cls, file: BinaryIO | GzipFile) -> 'TagInt':
-        return TagInt(cls.int_from_bytes(file.read(cls.size), cls.size))
+        return TagInt(expect_read_int(file, cls.size))
     
     def __init__(self, val: int):
-        self._val: int = int(val)
+        self._val: int = int_sized(val, self.size)
 
     def __bytes__(self) -> bytes:
-        return self.int_to_bytes(self._val, self.size)
+        return nbt_int_to_bytes(self._val, self.size)
     
     @property
     def value(self) -> int:
@@ -227,13 +244,13 @@ class TagLong(TagDataABC):
 
     @classmethod
     def read_from_file(cls, file: BinaryIO | GzipFile) -> 'TagLong':
-        return TagLong(cls.int_from_bytes(file.read(cls.size), cls.size))
+        return TagLong(expect_read_int(file, cls.size))
     
     def __init__(self, val: int):
-        self._val = int(val)
+        self._val = int_sized(val, self.size)
 
     def __bytes__(self) -> bytes:
-        return self.int_to_bytes(self._val, self.size)
+        return nbt_int_to_bytes(self._val, self.size)
     
     @property
     def value(self) -> int:
@@ -349,10 +366,12 @@ class TagList(TagArrayABC):
 
     @classmethod
     def read_from_file(cls, file: BinaryIO | GzipFile) -> 'TagList':
-        item_kind = TagByte.read_from_file(file)._val
-        item_count = TagInt.read_from_file(file)._val
-        the_class = TagDataABC.kind_to_class_type(item_kind)
-        return TagList(item_kind, [the_class.read_from_file(file) for _ in range(item_count)])
+        ## Read [item-type, a byte] then [item-count, an int] 
+        item_kind = TagByte.read_from_file(file).value
+        item_class = cls.kind_to_class_type(item_kind) # TODO: if this raises a ValueError, raise some file format exception
+        item_count = TagInt.read_from_file(file).value
+        ## And then read item-count tags of item-type.
+        return TagList(item_kind, [ item_class.read_from_file(file) for _ in range(item_count) ])
     
     @override
     def write_to_file_stepped(self, file: BinaryIO | GzipFile):
@@ -598,27 +617,25 @@ class NamedTag:
         except (IndexError, EOFError):
             return NamedTag("", TagEnd())
         if kind.value not in ALL_TAG_TYPES:
-            raise ValueError(f"invalid tag type: {kind.value}")
+            raise ValueError(f"encountered invalid tag type: {kind.value}")
         if kind.value == TAG_END:
-            ## No name or payload for TagEnd
-            return NamedTag("", TagEnd())
+            ## Special case: don't read a name or payload for TagEnd
+            return NamedTag('', TagEnd())
         else:
             ## Read the tag name (string tag)
             name_tag = TagString.read_from_file(file)
             ## Read the tag payload pay
-            payload = TagDataABC.dispatch_read_from_file(kind.value, file)
-            return NamedTag(name_tag, payload)
+            data_tag = TagDataABC.dispatch_read_from_file(kind.value, file)
+            return NamedTag(name_tag, data_tag)
 
-    def __init__(self, name: str | TagString, payload: TagDataABC):
+    def __init__(self, name: str | TagString = '', payload: TagDataABC | None = None):
         '''Create a 'NamedTag' with a 'name' string and a NBT tag 'payload'.'''
         if not isinstance(payload, TagDataABC):
             raise TypeError("a 'NamedTag' must be initialized with a payload that is an instance of 'TagDataABC'")
-        self.name: str = ''
-        self.payload: TagDataABC = payload
-        if isinstance(name, TagString):
-            self.name = str(name._val)
-        else:
-            self.name = str(name)
+        self.name: str = name.value if isinstance(name, TagString) else str(name)
+        self.payload: TagDataABC = TagEnd() if (payload is None) else payload
+        if not isinstance(payload, TagDataABC):
+            raise TypeError(f"payload for a 'NamedTag' must be an instance of 'TagDataABC' but is of type {type(payload)}")
     
     def get(self, key: str | int) -> TagDataABC | None:
         '''Calls 'get' on the 'payload' data tag.'''
