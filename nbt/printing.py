@@ -5,7 +5,7 @@ def tag_get_print_name(tag_kind: int) -> str:
     return TAG_NAMES[tag_kind]
 
 def print_tag(tag: TagDataABC | NamedTag, indent=0, indent_str='  ', within_list=False, _name=''): 
-    '''Print out an NBT tag and all of its contents in a mostly readable format, for debugging.'''
+    '''Print out an NBT tag and all of its contents in the same way examples are given in the original NBT specification.'''
     if isinstance(tag, NamedTag):
         # Unwrap named tag as a name argument
         print_tag(tag.payload, indent, indent_str, within_list, _name=tag.name)
@@ -23,6 +23,7 @@ def print_tag(tag: TagDataABC | NamedTag, indent=0, indent_str='  ', within_list
         else:
             print(end=f"{tag_type_name}: ")
 
+        # Print the tag data payload
         if isinstance(tag, (TagByte, TagShort, TagInt, TagLong, TagFloat, TagDouble)):
             print(end=str(tag.value))
         elif isinstance(tag, TagString):
