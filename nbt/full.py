@@ -100,7 +100,7 @@ class TagPayload:
 
     def __init__(self, 
                  tag_kind: int = TAG_END, 
-                 value: int | float | str | list['TagPayload'] | Mapping[str, 'TagPayload'] | None = None,
+                 value: int | float | str | Iterable['TagPayload'] | Mapping[str, 'TagPayload'] | None = None,
                  list_item_kind: int = TAG_END) -> None:
         if not tag_kind in ALL_TAG_TYPES:
             raise ValueError(f"Attempted to initialize 'TagPayload' with invalid 'tag_kind': {tag_kind}")
@@ -118,7 +118,7 @@ class TagPayload:
                 self.val_float = value
             elif self.tag_kind == TAG_STRING and isinstance(value, str):
                 self.val_str = str(value)
-            elif self.tag_kind in (TAG_LIST, TAG_BYTE_ARRAY, TAG_INT_ARRAY, TAG_LONG_ARRAY):
+            elif self.tag_kind in (TAG_LIST, TAG_BYTE_ARRAY, TAG_INT_ARRAY, TAG_LONG_ARRAY) and isinstance(value, list):
                 self.val_list = list(value)
             elif self.tag_kind == TAG_COMPOUND and isinstance(value, dict) and isinstance(value, dict):
                 self.val_comp = value
@@ -191,24 +191,6 @@ class TagPayload:
     @property
     def kind_name(self) -> str: 
         return tag_kind_to_str(self._tag_kind)
-    
-    @property
-    def value(self) -> None | int | float | str | list['TagPayload'] | list['NamedTag']:
-        k = self._tag_kind
-        if k == TAG_END:
-            return None
-        elif k in (TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG):
-            return self.val_int
-        elif k in (TAG_FLOAT, TAG_DOUBLE):
-            return self.val_float
-        elif k == TAG_STRING:
-            return self.val_str
-        elif k in (TAG_LIST, TAG_BYTE_ARRAY, TAG_INT_ARRAY, TAG_LONG_ARRAY):
-            return self.val_list
-        elif k == TAG_COMPOUND:
-            return [ NamedTag(name, tag) for name, tag in self.val_comp.items() ]
-        else:
-            raise ValueError(f'TagPayload has invalid tag_kind: {k}')
          
 class NamedTag:
     '''
@@ -227,9 +209,9 @@ class NamedTag:
             kind = TagPayload.read_from_file(TAG_BYTE, file)
         except (IndexError, EOFError):
             return NamedTag("", TagEnd())
-        if kind.value not in ALL_TAG_TYPES:
-            raise ValueError(f"encountered invalid tag type: {kind.value}")
-        if kind.value == TAG_END:
+        if kind.val_int not in ALL_TAG_TYPES:
+            raise ValueError(f"encountered invalid tag type: {kind.val_int}")
+        if kind.val_int == TAG_END:
             ## Special case: don't read a name or payload for TagEnd
             return NamedTag('', TagEnd())
         ## Read the tag name (string tag)
@@ -279,45 +261,54 @@ class NamedTag:
     def __str__(self) -> str:
         return f"NamedTag(name=\"{self.name}\", payload={self.payload})"
     
-def TagEnd() -> TagPayload:  
-    return TagPayload(TAG_END)
+class TagEnd(TagPayload):
+    def __init__(self, ):
+        super().__init__(TAG_END)
 
-def TagByte(val: int) -> TagPayload: 
-    return TagPayload(TAG_BYTE, val)
+class TagByte(TagPayload):
+    def __init__(self, val: int):
+        super().__init__(TAG_BYTE, val)
 
-def TagShort(val: int) -> TagPayload:  
-    return TagPayload(TAG_SHORT, val)
+class TagShort(TagPayload):
+    def __init__(self, val: int):
+        super().__init__(TAG_SHORT, val)
 
-def TagInt(val: int) -> TagPayload: 
-    return TagPayload(TAG_INT, val)
+class TagInt(TagPayload):
+    def __init__(self, val: int):
+        super().__init__(TAG_INT, val)
 
-def TagLong(val: int) -> TagPayload: 
-    return TagPayload(TAG_LONG, val)
+class TagLong(TagPayload):
+    def __init__(self, val: int):
+        super().__init__(TAG_LONG, val)
 
-def TagFloat(val: float) -> TagPayload: 
-    return TagPayload(TAG_FLOAT, val)
+class TagFloat(TagPayload):
+    def __init__(self, val: float):
+        super().__init__(TAG_FLOAT, val)
 
-def TagDouble(val: float) -> TagPayload: 
-    return TagPayload(TAG_DOUBLE, val)
+class TagDouble(TagPayload):
+    def __init__(self, val: float):
+        super().__init__(TAG_DOUBLE, val)
 
-def TagByteArray(val: int) -> TagPayload: 
-    return TagPayload(TAG_BYTE_ARRAY, val)
+class TagByteArray(TagPayload):
+    def __init__(self, val: int):
+        super().__init__(TAG_BYTE_ARRAY, val)
 
-def TagString(val: str) -> TagPayload: 
-    return TagPayload(TAG_STRING, val)
+class TagString(TagPayload):
+    def __init__(self, val: str):
+        super().__init__(TAG_STRING, val)
 
-def TagList(item_type: int, values: list[TagPayload]) -> TagPayload: 
-    return TagPayload(TAG_LIST, values, list_item_kind=item_type)
+class TagList(TagPayload):
+    def __init__(self, item_type: int, values: list[TagPayload]):
+        super().__init__(TAG_LIST, values, list_item_kind=item_type)
 
-def TagCompound(values: Mapping[str, TagPayload]) -> TagPayload: 
-    return TagPayload(TAG_COMPOUND, values)
+class TagCompound(TagPayload):
+    def __init__(self, values: Mapping[str, TagPayload]):
+        super().__init__(TAG_COMPOUND, values)
 
-def TagIntArray(values: list[int] | list[TagPayload]) -> TagPayload:
-    if len(values) and not isinstance(values[0], TagPayload):
-        values = [ TagPayload(TAG_INT, x) for x in values ]
-    return TagPayload(TAG_INT_ARRAY, values, list_item_kind=TAG_INT)
+class TagIntArray(TagPayload):
+    def __init__(self, values: list[TagPayload]):
+        super().__init__(TAG_INT_ARRAY, values, list_item_kind=TAG_INT)
 
-def TagLongArray(values: list[int] | list[TagPayload]) -> TagPayload:
-    if len(values) and not isinstance(values[0], TagPayload):
-        values = [ TagPayload(TAG_LONG, x) for x in values ]
-    return TagPayload(TAG_LONG_ARRAY, values, list_item_kind=TAG_LONG)
+class TagLongArray(TagPayload):
+    def __init__(self, values: list[TagPayload]):
+        super().__init__(TAG_LONG_ARRAY, values, list_item_kind=TAG_LONG)
