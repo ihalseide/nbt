@@ -141,10 +141,26 @@ class TagPayload:
             raise ValueError(f"TagPayload of kind {self.kind_name} does not have a 'len'")
     
     def __getitem__(self, index: int | str) -> 'TagPayload':
-        raise NotImplementedError('TODO')
+        if self.tag_kind in (TAG_LIST, TAG_BYTE_ARRAY, TAG_INT, TAG_LONG_ARRAY) and isinstance(index, int):
+            return self.val_list[index]
+        elif (self.tag_kind == TAG_COMPOUND) and isinstance(index, str):
+            return self.val_comp[index]
+        else:
+            raise ValueError(f"TagPayload of kind {self.kind_name} is not indexable by value of type {type(index)}")
     
-    def __setitem__(self, index: int | str, value: 'TagPayload'):
-        raise NotImplementedError('TODO')
+    def __setitem__(self, index: int | str, value: 'TagPayload'):        
+        if self.tag_kind == TAG_LIST and isinstance(index, int):
+            if self._list_item_kind != value.tag_kind:
+                raise ValueError(f"Cannot assign an element within a {value.kind_name} tag to a value of kind {value.kind_name}")
+            self.val_list[index] = value
+        elif self.tag_kind in (TAG_BYTE_ARRAY, TAG_INT, TAG_LONG_ARRAY) and isinstance(index, int):
+            if tag_array_type_to_item_type(self.tag_kind) != value.tag_kind:
+                raise ValueError(f"Cannot assign an element within a {value.kind_name} tag to a value of kind {value.kind_name}")
+            self.val_list[index] = value
+        elif (self.tag_kind == TAG_COMPOUND) and isinstance(index, str):
+            self.val_comp[index] = value
+        else:
+            raise ValueError(f"TagPayload of kind {self.kind_name} is not indexable by value of type {type(index)}")
     
     def write_to_file(self, file: BinaryIO | GzipFile) -> None:
         k = self._tag_kind
@@ -297,17 +313,17 @@ class TagString(TagPayload):
         super().__init__(TAG_STRING, val)
 
 class TagList(TagPayload):
-    def __init__(self, item_type: int, values: list[TagPayload]):
+    def __init__(self, item_type: int, values: list[TagPayload] | None = None):
         super().__init__(TAG_LIST, values, list_item_kind=item_type)
 
 class TagCompound(TagPayload):
-    def __init__(self, values: Mapping[str, TagPayload]):
+    def __init__(self, values: Mapping[str, TagPayload] | None = None):
         super().__init__(TAG_COMPOUND, values)
 
 class TagIntArray(TagPayload):
-    def __init__(self, values: list[TagPayload]):
+    def __init__(self, values: list[TagPayload] | None = None):
         super().__init__(TAG_INT_ARRAY, values, list_item_kind=TAG_INT)
 
 class TagLongArray(TagPayload):
-    def __init__(self, values: list[TagPayload]):
+    def __init__(self, values: list[TagPayload] | None = None):
         super().__init__(TAG_LONG_ARRAY, values, list_item_kind=TAG_LONG)
