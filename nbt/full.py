@@ -10,16 +10,9 @@ from nbt.constants import TAG_END
 
 from .constants import *
 
-def file_expect_read(file: GzipFile | BinaryIO, size: int) -> bytes:
-    '''Read exactly 'size' bytes from the 'file' or raise an 'EOFError' if end of file is reached.'''
-    result = file.read(size)
-    if (actual_length := len(result)) < size:
-        raise EOFError(f"expected to read {size} bytes but only got {actual_length} bytes")
-    return result
-
 def nbt_int_from_bytes(b: bytes, length: int) -> int:
     '''
-    Convenience function for converting integer from bytes consistently for all of the int-like tag classes
+    Converts integer from bytes consistently for all of the int-like tag classes.
     NOTE: should be synchronized with the 'nbt_int_to_bytes' function
     '''
     if len(b) != length:
@@ -27,11 +20,19 @@ def nbt_int_from_bytes(b: bytes, length: int) -> int:
     return int.from_bytes(b, byteorder='big', signed=True)
 
 def nbt_int_to_bytes(x: int, length: int) -> bytes:
-    '''NOTE: should be synchronized with the 'nbt_int_from_bytes' function'''
+    '''
+    Converts integer to bytes consistently for all of the int-like tag classes.
+    NOTE: should be synchronized with the 'nbt_int_from_bytes' function
+    '''
     return x.to_bytes(length, byteorder='big', signed=True)
-
-def expect_read_int(file: GzipFile | BinaryIO, size: int) -> int:
-    return nbt_int_from_bytes(file_expect_read(file, size), size)
+    
+def int_tag_size(tag_type: int) -> int:
+    '''Size in bytes for an integer-like tag type'''
+    if tag_type == TAG_BYTE: return 1
+    if tag_type == TAG_SHORT: return 2
+    if tag_type == TAG_INT: return 4
+    if tag_type == TAG_LONG: return 8
+    raise ValueError(f'tag_type {tag_type} is not a integer tag type')
 
 def int_sized(x: Any, size_bytes: int) -> int:
     '''Convert a value to int and make sure it can be represented by at most 'size_bytes' bytes.
@@ -46,16 +47,10 @@ def tag_kind_to_str(tag_type: int) -> str:
     try:
         return TAG_NAMES[tag_type]
     except IndexError:
-        raise ValueError("int value does not represent a type of NBT tag")
-    
-def int_tag_size(tag_type: int) -> int:
-    if tag_type == TAG_BYTE: return 1
-    if tag_type == TAG_SHORT: return 2
-    if tag_type == TAG_INT: return 4
-    if tag_type == TAG_LONG: return 8
-    raise ValueError()
+        raise ValueError(f"int value of {tag_type} does not represent a type of NBT tag")
 
 def tag_array_type_to_item_type(tag_type: int) -> int:
+    '''Get what the sub-item tag type for the given array-like tag type is.'''
     if tag_type == TAG_BYTE_ARRAY: return TAG_BYTE
     if tag_type == TAG_INT_ARRAY: return TAG_INT
     if tag_type == TAG_LONG_ARRAY: return TAG_LONG
@@ -72,7 +67,8 @@ class TagPayload:
             return TagPayload(k)
         elif k in (TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG):
             ## Integer types
-            return TagPayload(k, nbt_int_from_bytes(file.read(int_tag_size(k)), int_tag_size(k)))
+            size = int_tag_size(k)
+            return TagPayload(k, nbt_int_from_bytes(file.read(size), size))
         elif k == TAG_FLOAT: 
             return TagPayload(k, struct.unpack('>f', file.read(4))[0])
         elif k == TAG_DOUBLE:
@@ -82,20 +78,23 @@ class TagPayload:
             str_len = TagPayload.read_from_file(TAG_SHORT, file).val_int
             return TagPayload(k, file.read(str_len).decode())
         elif k == TAG_LIST:
+            ## Read type-prefixed, length-prefixed list
             item_type = TagPayload.read_from_file(TAG_BYTE, file).val_int
             item_count = TagPayload.read_from_file(TAG_INT, file).val_int
             return TagPayload(k, [ TagPayload.read_from_file(item_type, file) for _ in range(item_count) ], list_item_kind=item_type)
         elif k in (TAG_BYTE_ARRAY, TAG_INT_ARRAY, TAG_LONG_ARRAY):
+            ## Read length-prefixed array
             item_type = tag_array_type_to_item_type(k)
             item_count = TagPayload.read_from_file(TAG_INT, file).val_int
             return TagPayload(k, [ TagPayload.read_from_file(item_type, file) for _ in range(item_count) ])
         elif k == TAG_COMPOUND:
-            compound: dict[str, TagPayload] = { }
+            ## Read tags for a tag compound until a tag_end tag is encountered (or EOF)
+            compound: dict[str, TagPayload] = dict()
             while (named_tag := NamedTag.read_from_file(file)).payload.tag_kind != TAG_END:
                 compound[named_tag.name] = named_tag.payload
             return TagPayload(k, compound)
         else:
-            raise ValueError(f"Invalid tag kind: {tag_kind}")
+            raise ValueError(f"cannot read a tag with invalid tag kind: {tag_kind}")
 
     def __init__(self, 
                  tag_kind: int = TAG_END, 
@@ -187,7 +186,7 @@ class TagPayload:
         if k == TAG_END: 
             return
         elif k in (TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG):
-            file.write(nbt_int_to_bytes(self.val_int, int_tag_size(self._tag_kind)))
+            file.write(nbt_int_to_bytes(self.val_int, int_tag_size(self.tag_kind)))
         elif k == TAG_FLOAT: 
             file.write(struct.pack('>f', self.val_float))
         elif k == TAG_DOUBLE:
@@ -213,7 +212,7 @@ class TagPayload:
             ## Write the tag_end tag
             NamedTag().write_to_file(file)
         else:
-            raise ValueError("this TagPayload has invalid 'tag_kind'")
+            raise ValueError(f"this TagPayload has invalid 'tag_kind': {k}")
     
     @property
     def tag_kind(self) -> int:
@@ -261,7 +260,7 @@ class NamedTag:
         return NamedTag(name_tag.val_str, data_tag)
 
     def __init__(self, name: str = '', payload: TagPayload | None = None):
-        '''Create a 'NamedTag' with a 'name' string and a NBT tag 'payload'. If given no arguments, creates an unnamed tag_end tag.'''
+        '''Create a 'NamedTag' with a 'name' string and a 'payload' NBT tag . If given no arguments, creates an unnamed tag_end tag.'''
         self.name: str = str(name)
         self.payload: TagPayload = TagEnd() if (payload is None) else payload
     
