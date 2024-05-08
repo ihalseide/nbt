@@ -33,7 +33,7 @@ def print_tag(tag: TagPayload | NamedTag, indent=0, indent_str='  ', within_list
         print(end=f"\"{tag.val_str}\"")
     elif tag.tag_kind == TAG_BYTE_ARRAY:
         if len(tag) > 10:
-            print(end=f"[{len(tag)} bytes]")
+            print(end=f"[{len(tag)} bytes...]")
         else:
             print(end="[ ")
             for b in tag.val_list:
@@ -55,7 +55,7 @@ def print_tag(tag: TagPayload | NamedTag, indent=0, indent_str='  ', within_list
     elif tag.tag_kind in (TAG_INT_ARRAY, TAG_LONG_ARRAY):
         item_type = 'ints' if tag.tag_kind == TAG_INT_ARRAY else 'longs'
         if len(tag) > 10:
-            print(end=f"[{len(tag)} {item_type}]")
+            print(end=f"[{len(tag)} {item_type}...]")
         else:
             print(end=str(tag.val_list))
     else:
