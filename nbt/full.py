@@ -546,10 +546,10 @@ class TagIntArray(TagArrayABC):
     @classmethod
     def read_from_file(cls, file: BinaryIO | GzipFile) -> 'TagIntArray':
         count = TagInt.read_from_file(file)._val
-        return TagIntArray([TagInt.read_from_file(file)._val for _ in range(count)])
+        return TagIntArray([ TagInt.read_from_file(file)._val for _ in range(count) ])
     
     def __init__(self, val: Iterable[int]):
-        self._val = list(int(x) for x in val)
+        self._val = list( int_sized(x, TagInt.size) for x in val )
 
     def __bytes__(self) -> bytes:
         result = bytearray()
@@ -578,10 +578,10 @@ class TagLongArray(TagArrayABC):
     @classmethod
     def read_from_file(cls, file: BinaryIO | GzipFile) -> 'TagLongArray':
         count = TagInt.read_from_file(file)._val
-        return TagLongArray([TagLong.read_from_file(file)._val for _ in range(count)])
+        return TagLongArray([ TagLong.read_from_file(file)._val for _ in range(count) ])
     
     def __init__(self, val: Iterable[int]):
-        self._val = list(int(x) for x in val)
+        self._val = list( int_sized(x, TagLong.size) for x in val )
 
     def __bytes__(self) -> bytes:
         result = bytearray()
