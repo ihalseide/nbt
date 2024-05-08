@@ -6,8 +6,6 @@ import struct
 from typing import BinaryIO, Any, Iterable, Mapping
 from gzip import GzipFile # imported for the type annotation
 
-from nbt.constants import TAG_END
-
 from .constants import *
 
 def nbt_int_from_bytes(b: bytes, length: int) -> int:
