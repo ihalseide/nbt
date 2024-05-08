@@ -84,14 +84,14 @@ class TagPayload:
         elif k == TAG_LIST:
             item_type = TagPayload.read_from_file(TAG_BYTE, file).val_int
             item_count = TagPayload.read_from_file(TAG_INT, file).val_int
-            return TagPayload(k, [ TagPayload.read_from_file(item_type, file) for _ in range(item_count) ])
+            return TagPayload(k, [ TagPayload.read_from_file(item_type, file) for _ in range(item_count) ], list_item_kind=item_type)
         elif k in (TAG_BYTE_ARRAY, TAG_INT_ARRAY, TAG_LONG_ARRAY):
             item_type = tag_array_type_to_item_type(k)
             item_count = TagPayload.read_from_file(TAG_INT, file).val_int
             return TagPayload(k, [ TagPayload.read_from_file(item_type, file) for _ in range(item_count) ])
         elif k == TAG_COMPOUND:
             compound: dict[str, TagPayload] = { }
-            while (named_tag := NamedTag.read_from_file(file)).kind != TAG_END:
+            while (named_tag := NamedTag.read_from_file(file)).payload.tag_kind != TAG_END:
                 compound[named_tag.name] = named_tag.payload
             return TagPayload(k, compound)
         else:
@@ -99,38 +99,57 @@ class TagPayload:
 
     def __init__(self, 
                  tag_kind: int = TAG_END, 
-                 value: int | float | str | Iterable['TagPayload'] | Mapping[str, 'TagPayload'] | None = None,
+                 tag_value: int | float | str | Iterable['TagPayload'] | Mapping[str, 'TagPayload'] | None = None,
                  list_item_kind: int = TAG_END) -> None:
         if not tag_kind in ALL_TAG_TYPES:
             raise ValueError(f"Attempted to initialize 'TagPayload' with invalid 'tag_kind': {tag_kind}")
         self._tag_kind: int = tag_kind
         self._list_item_kind: int = list_item_kind
+        if (self.tag_kind == TAG_LIST) and list_item_kind == TAG_END:
+            raise ValueError(f"must provide a tag 'list_item_kind' argument for a {self.kind_name}")
+        ## Potential value types. It is only expected that one of these is valid at a time:
         self.val_int: int = 0
         self.val_float: float = 0.0
         self.val_str: str = ''
         self.val_list: list[TagPayload] = []
         self.val_comp: dict[str, TagPayload] = {}
-        if value is not None:
-            if self.tag_kind in (TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG) and isinstance(value, int):
-                self.val_int = int_sized(value, int_tag_size(self._tag_kind))
-            elif self.tag_kind in (TAG_FLOAT, TAG_DOUBLE) and isinstance(value, float):
-                self.val_float = value
-            elif self.tag_kind == TAG_STRING and isinstance(value, str):
-                self.val_str = str(value)
-            elif self.tag_kind in (TAG_LIST, TAG_BYTE_ARRAY, TAG_INT_ARRAY, TAG_LONG_ARRAY) and isinstance(value, list):
-                self.val_list = list(value)
-            elif self.tag_kind == TAG_COMPOUND and isinstance(value, dict) and isinstance(value, dict):
-                self.val_comp = value
+        ## Assign the correct value (if given None, the default value will be kept, which also covers the case with a tag_end tag).
+        if tag_value is not None:
+            if self.tag_kind in (TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG) and isinstance(tag_value, int):
+                self.val_int = int_sized(tag_value, int_tag_size(self._tag_kind))
+            elif self.tag_kind in (TAG_FLOAT, TAG_DOUBLE) and isinstance(tag_value, float):
+                self.val_float = tag_value
+            elif self.tag_kind == TAG_STRING and isinstance(tag_value, str):
+                self.val_str = str(tag_value)
+            elif self.tag_kind in (TAG_LIST, TAG_BYTE_ARRAY, TAG_INT_ARRAY, TAG_LONG_ARRAY) and isinstance(tag_value, list):
+                for i, item in enumerate(tag_value):
+                    if item.tag_kind != self.item_kind:
+                        item_kind_name = tag_kind_to_str(self.item_kind)
+                        raise ValueError(f"item at index {i} is a {item.kind_name} instead of the expected {item_kind_name}")
+                    self.val_list.append(item)
+            elif self.tag_kind == TAG_COMPOUND and isinstance(tag_value, dict) and isinstance(tag_value, dict):
+                for k, v in tag_value.items():
+                    ## Do extra type-checking
+                    if not isinstance(k, str): 
+                        raise TypeError(f"dictionary key is of type {type(v)} instead of 'str'")
+                    if not isinstance(v, TagPayload): 
+                        raise TypeError(f"dictionary value is of type {type(v)} instead of 'TagPayload'")
+                self.val_comp = tag_value
             elif self.tag_kind not in ALL_TAG_TYPES:
                 raise ValueError(f'TagPayload has invalid tag_kind: {self.tag_kind}')
             else:
-                raise TypeError(f"Cannot assign value of type {type(value)} to TagPayload of type {self.kind_name}")
+                raise TypeError(f"Cannot assign value of type {type(tag_value)} to TagPayload of type {self.kind_name}")
     
     def __str__(self) -> str:
-        return f"{self.kind_name}()"
+        info = '...'
+        if self.tag_kind in (TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG):
+            info = str(self.val_int)
+        elif self.tag_kind == TAG_STRING:
+            info = f"\"{self.val_str}\""
+        return f"{self.kind_name}({info})"
 
     def __len__(self) -> int:
-        '''Return the length of this tag's value (sub-element count)'''
+        '''For list-like tags only, get the length of this tag's value (sub-element count)'''
         if self.tag_kind in (TAG_LIST, TAG_BYTE_ARRAY, TAG_INT, TAG_LONG_ARRAY):
             return len(self.val_list)
         elif self.tag_kind == TAG_STRING:
@@ -138,7 +157,7 @@ class TagPayload:
         elif self.tag_kind == TAG_COMPOUND:
             return len(self.val_comp)
         else:
-            raise ValueError(f"TagPayload of kind {self.kind_name} does not have a 'len'")
+            raise AttributeError(f"TagPayload of kind {self.kind_name} does not have a 'len'")
     
     def __getitem__(self, index: int | str) -> 'TagPayload':
         if self.tag_kind in (TAG_LIST, TAG_BYTE_ARRAY, TAG_INT, TAG_LONG_ARRAY) and isinstance(index, int):
@@ -146,7 +165,7 @@ class TagPayload:
         elif (self.tag_kind == TAG_COMPOUND) and isinstance(index, str):
             return self.val_comp[index]
         else:
-            raise ValueError(f"TagPayload of kind {self.kind_name} is not indexable by value of type {type(index)}")
+            raise AttributeError(f"TagPayload of kind {self.kind_name} is not indexable by value of type {type(index)}")
     
     def __setitem__(self, index: int | str, value: 'TagPayload'):        
         if self.tag_kind == TAG_LIST and isinstance(index, int):
@@ -160,9 +179,10 @@ class TagPayload:
         elif (self.tag_kind == TAG_COMPOUND) and isinstance(index, str):
             self.val_comp[index] = value
         else:
-            raise ValueError(f"TagPayload of kind {self.kind_name} is not indexable by value of type {type(index)}")
+            raise AttributeError(f"TagPayload of kind {self.kind_name} is not indexable by value of type {type(index)}")
     
     def write_to_file(self, file: BinaryIO | GzipFile) -> None:
+        '''Write the binary tag payload data to a binary file.'''
         k = self._tag_kind
         if k == TAG_END: 
             return
@@ -200,12 +220,15 @@ class TagPayload:
         return self._tag_kind
     
     @property
-    def kind_tag(self) -> 'TagPayload':
-        return TagByte(self._tag_kind)
-    
-    @property
     def kind_name(self) -> str: 
         return tag_kind_to_str(self._tag_kind)
+    
+    @property
+    def item_kind(self) -> int:
+        '''For list-like TagPayloads only, get the tag type of the inner element.'''
+        if self.tag_kind == TAG_LIST:
+            return self._list_item_kind
+        return tag_array_type_to_item_type(self.tag_kind)
          
 class NamedTag:
     '''
@@ -223,12 +246,14 @@ class NamedTag:
         try:
             kind = TagPayload.read_from_file(TAG_BYTE, file)
         except (IndexError, EOFError):
-            return NamedTag("", TagEnd())
+            return NamedTag()
         if kind.val_int not in ALL_TAG_TYPES:
-            raise ValueError(f"encountered invalid tag type: {kind.val_int}")
+            raise ValueError(f"encountered invalid tag type byte value: {kind.val_int} while reading file")
+        
         if kind.val_int == TAG_END:
-            ## Special case: don't read a name or payload for TagEnd
-            return NamedTag('', TagEnd())
+            ## Special case: don't read a name or payload for a tag_end (it doesn't have a name or payload)
+            return NamedTag()
+        
         ## Read the tag name (string tag)
         name_tag = TagPayload.read_from_file(TAG_STRING, file)
         ## Read the tag payload
@@ -239,38 +264,22 @@ class NamedTag:
         '''Create a 'NamedTag' with a 'name' string and a NBT tag 'payload'. If given no arguments, creates an unnamed tag_end tag.'''
         self.name: str = str(name)
         self.payload: TagPayload = TagEnd() if (payload is None) else payload
-        if not isinstance(self.payload, TagPayload):
-            raise TypeError(f"payload for a 'NamedTag' must be an instance of 'TagPayload' but is of type {type(payload)}")
-    
-    @property
-    def kind(self) -> int:
-        '''Get this named tag's tag type a.k.a. kind.'''
-        return self.payload.tag_kind
-    
-    @property
-    def kind_name(self) -> str:
-        '''Get the name string that indicates the NBT payload tag type a.k.a kind.'''
-        return self.payload.kind_name
-    
-    @property
-    def name_tag(self) -> TagPayload:
-        '''Get a string name tag that represents this tag's name.'''
-        return TagString(self.name)
     
     def write_to_file(self, file: BinaryIO | GzipFile) -> None:
         '''Write this named tag's binary representation to the given file'''
-        TagPayload(TAG_BYTE, self.kind).write_to_file(file)
+        ## Write the tag type byte
+        TagPayload(TAG_BYTE, self.payload.tag_kind).write_to_file(file)
         if self.payload.tag_kind == TAG_END:
+            ## tag_end tags don't have a name or payload
             return
-        self.name_tag.write_to_file(file)
+        ## Write the name and payload
+        TagString(self.name).write_to_file(file)
         self.payload.write_to_file(file)
     
     def __getitem__(self, key: str | int) -> TagPayload:
-        '''Calls '__getitem__' on the 'payload' data tag.'''
         return self.payload[key]
     
     def __setitem__(self, key: str | int, value: TagPayload):
-        '''Calls '__setitem__' on the 'payload' data tag.'''
         self.payload[key] = value
 
     def __str__(self) -> str:
@@ -322,8 +331,8 @@ class TagCompound(TagPayload):
 
 class TagIntArray(TagPayload):
     def __init__(self, values: list[TagPayload] | None = None):
-        super().__init__(TAG_INT_ARRAY, values, list_item_kind=TAG_INT)
+        super().__init__(TAG_INT_ARRAY, values)
 
 class TagLongArray(TagPayload):
     def __init__(self, values: list[TagPayload] | None = None):
-        super().__init__(TAG_LONG_ARRAY, values, list_item_kind=TAG_LONG)
+        super().__init__(TAG_LONG_ARRAY, values)
