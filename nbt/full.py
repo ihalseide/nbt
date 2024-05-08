@@ -3,9 +3,11 @@ Classes for NBT tags that fully contain the data payload from a file.
 '''
 
 import struct
-from typing import BinaryIO, override, Any, Iterable, Mapping, ItemsView, Generator
+from typing import BinaryIO, override, Any, Iterable, Mapping, ItemsView, Generator, Union, Literal
 from gzip import GzipFile # imported for the type annotation
 from abc import ABC, abstractmethod
+
+from nbt.constants import TAG_END
 
 from .constants import *
 
@@ -46,569 +48,183 @@ def tag_kind_to_str(tag_type: int) -> str:
         return TAG_NAMES[tag_type]
     except IndexError:
         raise ValueError("int value does not represent a type of NBT tag")
-
-class TagDataABC(ABC):
-    '''Abstract base class for all the NBT payload classes.'''
-
-    # Default tag type value
-    kind = TAG_END
-
-    def name(self) -> str:
-        return TAG_NAMES[self.kind]
-
-    @staticmethod
-    def kind_to_class_type(tag_kind: int) -> type['TagDataABC']:
-        '''Map a tag kind to a derived class type.'''
-        if tag_kind == TAG_END: return TagEnd
-        elif tag_kind == TAG_BYTE: return TagByte
-        elif tag_kind == TAG_SHORT: return TagShort
-        elif tag_kind == TAG_INT: return TagInt
-        elif tag_kind == TAG_LONG: return TagLong
-        elif tag_kind == TAG_FLOAT: return TagFloat
-        elif tag_kind == TAG_DOUBLE: return TagDouble
-        elif tag_kind == TAG_BYTE_ARRAY: return TagByteArray
-        elif tag_kind == TAG_STRING: return TagString
-        elif tag_kind == TAG_LIST: return TagList
-        elif tag_kind == TAG_COMPOUND: return TagCompound
-        elif tag_kind == TAG_INT_ARRAY: return TagIntArray
-        elif tag_kind == TAG_LONG_ARRAY: return TagLongArray
-        else:
-            raise ValueError("invalid kind value")
     
+def int_tag_size(tag_type: int) -> int:
+    if tag_type == TAG_BYTE: return 1
+    if tag_type == TAG_SHORT: return 2
+    if tag_type == TAG_INT: return 4
+    if tag_type == TAG_LONG: return 8
+    raise ValueError()
+
+def tag_array_type_to_item_type(tag_type: int) -> int:
+    if tag_type == TAG_BYTE_ARRAY: return TAG_BYTE
+    if tag_type == TAG_INT_ARRAY: return TAG_INT
+    if tag_type == TAG_LONG_ARRAY: return TAG_LONG
+    return TAG_END
+
+class TagPayload:
+
     @classmethod
-    @abstractmethod
-    def read_from_file(cls, file: BinaryIO | GzipFile) -> 'TagDataABC':
-        '''Read the tag payload of this classes type from a binary file.'''
-        raise NotImplementedError()
-    
-    def write_to_file_stepped(self, file: BinaryIO | GzipFile):
-        '''
-        Meant to be overridden (but not required to be).
-        Write a tag to a file (special version which may be overrided if the tag type has a way to split up writes into steps).
-        If a subclass doesn't override this method, this default implementation is always correct!
-        '''
-        file.write(bytes(self))
-    
-    @property
-    def value(self) -> Any:
-        raise NotImplementedError()
-    
-    @property
-    def kind_tag(self) -> 'TagByte':
-        return TagByte(self.kind)
-    
-    @property
-    def item_kind_tag(self) -> 'TagByte':
-        type_name = tag_kind_to_str(self.kind)
-        raise TypeError(f"this kind of tag, {type_name} has no element kind")
-    
-    @property
-    def kind_name(self) -> str:
-        return TAG_NAMES[self.kind]
-    
-    def get(self, key):
-        raise NotImplementedError("this NBT tag type does not implement `get`")
-    
-    @abstractmethod
-    def __bytes__ (self) -> bytes:
-        raise NotImplementedError()
-    
-    def __getitem__(self, key) -> 'TagDataABC':
-        kind = type(self).__name__
-        raise NotImplementedError(f"NBT tag of type {kind} is not subscriptable")
-    
-    def __setitem__(self, key, value):
-        kind = type(self).__name__
-        raise NotImplementedError(f"NBT tag of type {kind} is not subscriptable")
+    def read_from_file(cls, tag_kind: int, file: BinaryIO | GzipFile) -> 'TagPayload':
+        '''Read the tag payload of the given tag type from a binary file.'''
+        k = tag_kind
+        if k == TAG_END:
+            ## Read no bytes
+            return TagPayload(k)
+        elif k in (TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG):
+            ## Integer types
+            return TagPayload(k, nbt_int_from_bytes(file.read(int_tag_size(k)), int_tag_size(k)))
+        elif k == TAG_FLOAT: 
+            return TagPayload(k, struct.unpack('>f', file.read(4))[0])
+        elif k == TAG_DOUBLE:
+            return TagPayload(k, struct.unpack('>d', file.read(8))[0])
+        elif k == TAG_STRING:
+            ## Read length-prefixed string (length prefix is a tag_short)
+            str_len = TagPayload.read_from_file(TAG_SHORT, file).val_int
+            return TagPayload(k, file.read(str_len).decode())
+        elif k == TAG_LIST:
+            item_type = TagPayload.read_from_file(TAG_BYTE, file).val_int
+            item_count = TagPayload.read_from_file(TAG_INT, file).val_int
+            return TagPayload(k, [ TagPayload.read_from_file(item_type, file) for _ in range(item_count) ])
+        elif k in (TAG_BYTE_ARRAY, TAG_INT_ARRAY, TAG_LONG_ARRAY):
+            item_type = tag_array_type_to_item_type(k)
+            item_count = TagPayload.read_from_file(TAG_INT, file).val_int
+            return TagPayload(k, [ TagPayload.read_from_file(item_type, file) for _ in range(item_count) ])
+        elif k == TAG_COMPOUND:
+            compound: dict[str, TagPayload] = { }
+            while (named_tag := NamedTag.read_from_file(file)).kind != TAG_END:
+                compound[named_tag.name] = named_tag.payload
+            return TagPayload(k, compound)
+        else:
+            raise ValueError(f"Invalid tag kind: {tag_kind}")
+
+    def __init__(self, 
+                 tag_kind: int = TAG_END, 
+                 value: int | float | str | list['TagPayload'] | Mapping[str, 'TagPayload'] | None = None,
+                 list_item_kind: int = TAG_END) -> None:
+        if not tag_kind in ALL_TAG_TYPES:
+            raise ValueError(f"Attempted to initialize 'TagPayload' with invalid 'tag_kind': {tag_kind}")
+        self._tag_kind: int = tag_kind
+        self._list_item_kind: int = list_item_kind
+        self.val_int: int = 0
+        self.val_float: float = 0.0
+        self.val_str: str = ''
+        self.val_list: list[TagPayload] = []
+        self.val_comp: dict[str, TagPayload] = {}
+        if value is not None:
+            if self.tag_kind in (TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG) and isinstance(value, int):
+                self.val_int = int_sized(value, int_tag_size(self._tag_kind))
+            elif self.tag_kind in (TAG_FLOAT, TAG_DOUBLE) and isinstance(value, float):
+                self.val_float = value
+            elif self.tag_kind == TAG_STRING and isinstance(value, str):
+                self.val_str = str(value)
+            elif self.tag_kind in (TAG_LIST, TAG_BYTE_ARRAY, TAG_INT_ARRAY, TAG_LONG_ARRAY):
+                self.val_list = list(value)
+            elif self.tag_kind == TAG_COMPOUND and isinstance(value, dict) and isinstance(value, dict):
+                self.val_comp = value
+            elif self.tag_kind not in ALL_TAG_TYPES:
+                raise ValueError(f'TagPayload has invalid tag_kind: {self.tag_kind}')
+            else:
+                raise TypeError(f"Cannot assign value of type {type(value)} to TagPayload of type {self.kind_name}")
     
     def __str__(self) -> str:
-        type_name = type(self).__name__
-        return f"{type_name}()"
-    
-class TagArrayABC(TagDataABC):
-    '''Convenient abstract base class to reduce repetition within the implementation of TagList, TagByteArray, TagIntArray, and TagLongArray.'''
+        return f"{self.kind_name}()"
 
     def __len__(self) -> int:
-        return len(self.value)
-    
-    @override
-    def __getitem__(self, index: int) -> TagDataABC:
-        return self.value[index]
-    
-    @override
-    def __setitem__(self, index: int, value: TagDataABC):
-        if not isinstance(value, TagDataABC):
-            raise TypeError("value must be an instance of 'TagDataABC'")
-        self.value[index] = value
-
-    @override
-    def get(self, index: int) -> TagDataABC | None:
-        try:
-            return self[index]
-        except (IndexError, KeyError):
-            return None
-        
-    @abstractmethod
-    def append(self, item: TagDataABC):
-        raise NotImplementedError()
-    
-    @property
-    def value_values(self) -> Generator[Any, None, None]:
-        for item in self.value:
-            yield item.value
-        
-class TagEnd(TagDataABC):
-
-    kind = TAG_END
-
-    @classmethod
-    def read_from_file(cls, file: BinaryIO | GzipFile) -> 'TagEnd':
-        return TagEnd()
-
-    def __bytes__(self) -> bytes:
-        # Empty data
-        return bytes()
-    
-    @override
-    def value(self) -> None:
-        return
-    
-class TagByte(TagDataABC): 
-
-    kind = TAG_BYTE
-    size = 1
-
-    @classmethod
-    def read_from_file(cls, file: BinaryIO | GzipFile) -> 'TagByte':
-        return TagByte(nbt_int_from_bytes(file.read(cls.size), cls.size))
-    
-    def __init__(self, val: int):
-        self._val = int_sized(val, self.size)
-
-    def __bytes__(self) -> bytes:
-        return nbt_int_to_bytes(self._val, self.size)
-    
-    @property
-    def value(self) -> int:
-        return self._val
-    
-class TagShort(TagDataABC): 
-
-    kind = TAG_SHORT
-    size = 2
-
-    @classmethod
-    def read_from_file(cls, file: BinaryIO | GzipFile) -> 'TagShort':
-        return TagShort(expect_read_int(file, cls.size))
-    
-    def __init__(self, val: int):
-        self._val = int_sized(val, self.size)
-
-    def __bytes__(self) -> bytes:
-        return nbt_int_to_bytes(self._val, self.size)
-    
-    @property
-    def value(self) -> int:
-        return self._val
-    
-class TagInt(TagDataABC): 
-
-    kind = TAG_INT
-    size = 4
-
-    @classmethod
-    def read_from_file(cls, file: BinaryIO | GzipFile) -> 'TagInt':
-        return TagInt(expect_read_int(file, cls.size))
-    
-    def __init__(self, val: int):
-        self._val: int = int_sized(val, self.size)
-
-    def __bytes__(self) -> bytes:
-        return nbt_int_to_bytes(self._val, self.size)
-    
-    @property
-    def value(self) -> int:
-        return self._val
-    
-class TagLong(TagDataABC): 
-
-    kind = TAG_LONG
-    size = 8
-
-    @classmethod
-    def read_from_file(cls, file: BinaryIO | GzipFile) -> 'TagLong':
-        return TagLong(expect_read_int(file, cls.size))
-    
-    def __init__(self, val: int):
-        self._val = int_sized(val, self.size)
-
-    def __bytes__(self) -> bytes:
-        return nbt_int_to_bytes(self._val, self.size)
-    
-    @property
-    def value(self) -> int:
-        return self._val
-    
-class TagFloat(TagDataABC):
-
-    kind = TAG_FLOAT
-    size = 4
-
-    @classmethod
-    def read_from_file(cls, file: BinaryIO | GzipFile) -> 'TagFloat':
-        x: float = struct.unpack('>f', file.read(cls.size))[0]
-        return TagFloat(x)
-    
-    def __init__(self, val: float):
-        self._val = float(val)
-
-    def __bytes__(self) -> bytes:
-        result = struct.pack('>f', self._val)
-        assert(len(result) == self.size)
-        return result
-    
-    @property
-    def value(self) -> float:
-        return self._val
-    
-class TagDouble(TagDataABC): 
-
-    kind = TAG_DOUBLE
-    size = 8
-
-    @classmethod
-    def read_from_file(cls, file: BinaryIO | GzipFile) -> 'TagDouble':
-        x: float = struct.unpack('>d', file.read(cls.size))[0]
-        return TagDouble(x)
-    
-    def __init__(self, val: float):
-        self._val = float(val)
-
-    def __bytes__(self) -> bytes:
-        result = struct.pack('>d', self._val)
-        assert(len(result) == self.size)
-        return result
-    
-    @property
-    def value(self) -> float:
-        return self._val
-    
-class TagByteArray(TagArrayABC): 
-
-    kind = TAG_BYTE_ARRAY
-
-    @classmethod
-    def read_from_file(cls, file: BinaryIO | GzipFile) -> 'TagByteArray':
-        byte_count = TagInt.read_from_file(file)._val
-        return TagByteArray(file.read(byte_count))
-
-    def __init__(self, val: bytes | Iterable[int]):
-        self._val = bytearray(val)
-    
-    def write_to_file_stepped(self, file: BinaryIO | GzipFile):
-        '''Override the parent method so that this can be broken down into 2 write calls.'''
-        TagInt(len(self)).write_to_file_stepped(file)
-        file.write(self._val)
-
-    @override
-    def append(self, item: TagDataABC):
-        return super().append(item)
-
-    @property
-    def value(self) -> bytearray:
-        return self._val
-
-    def __bytes__(self) -> bytes:
-        result = bytearray()
-        result.extend(bytes(TagInt(len(self))))
-        result.extend(self._val)
-        return bytes(result)
-    
-class TagString(TagDataABC): 
-
-    kind = TAG_STRING
-
-    @classmethod
-    def read_from_file(cls, file: BinaryIO | GzipFile) -> 'TagString':
-        count = TagShort.read_from_file(file).value
-        if count == 0:
-            return TagString('')
+        '''Return the length of this tag's value (sub-element count)'''
+        if self.tag_kind in (TAG_LIST, TAG_BYTE_ARRAY, TAG_INT, TAG_LONG_ARRAY):
+            return len(self.val_list)
+        elif self.tag_kind == TAG_STRING:
+            return len(self.val_str)
+        elif self.tag_kind == TAG_COMPOUND:
+            return len(self.val_comp)
         else:
-            return TagString(file.read(count).decode('utf-8'))
+            raise ValueError(f"TagPayload of kind {self.kind_name} does not have a 'len'")
     
-    def __init__(self, val: str):
-        self._val = str(val)
-
-    def __bytes__(self) -> bytes:
-        result = bytearray()
-        result.extend(bytes(TagShort(len(self))))
-        result.extend(self._val.encode('utf-8'))
-        return bytes(result)
+    def __getitem__(self, index: int | str) -> 'TagPayload':
+        raise NotImplementedError('TODO')
     
-    @property
-    def value(self) -> str:
-        return self._val
+    def __setitem__(self, index: int | str, value: 'TagPayload'):
+        raise NotImplementedError('TODO')
     
-    def __len__(self) -> int:
-        return len(self._val)
-    
-class TagList(TagArrayABC):
-
-    kind = TAG_LIST
-
-    @classmethod
-    def read_from_file(cls, file: BinaryIO | GzipFile) -> 'TagList':
-        ## Read [item-type, a byte] then [item-count, an int] 
-        item_kind = TagByte.read_from_file(file).value
-        item_class = cls.kind_to_class_type(item_kind) # TODO: if this raises a ValueError, raise some file format exception
-        item_count = TagInt.read_from_file(file).value
-        ## And then read item-count tags of item-type.
-        return TagList(item_kind, [ item_class.read_from_file(file) for _ in range(item_count) ])
-    
-    @override
-    def write_to_file_stepped(self, file: BinaryIO | GzipFile):
-        '''Override the parent method so that this can be broken down into 2 write calls.'''
-        self.item_kind_tag.write_to_file_stepped(file)
-        TagShort(len(self)).write_to_file_stepped(file)
-        for tag in self._val:
-            tag.write_to_file_stepped(file)
-    
-    def __init__(self, item_kind: int | TagByte | type['TagDataABC'], val: Iterable[TagDataABC] = ()):
-        self._val = list()
-
-        # Set item_kind (element type)
-        if isinstance(item_kind, int):
-            self._item_kind = item_kind
-        elif isinstance(item_kind, TagByte):
-            # Extract value from integer tag
-            self._item_kind = item_kind.value
-        elif issubclass(item_kind, TagDataABC):
-            self._item_kind = item_kind.kind
-        else:
-            raise TypeError("'item_kind' must be an int or a int-like kind of TagDataABC")
-        
-        # Set and check the elements
-        for i, tag_i in enumerate(val):
-            if not isinstance(tag_i, TagDataABC):
-                raise TypeError(f"item \"{tag_i}\", is not an instance of 'TagDataABC'")
-            if tag_i.kind != self._item_kind:
-                expected_type = tag_kind_to_str(self._item_kind)
-                raise TypeError(f"NBT item {tag_i}, does not have the same NBT type as the TagList's expected item type: {expected_type}")
-            self._val.append(tag_i)
-        
-    def __bytes__(self) -> bytes:
-        result = bytearray()
-        result.extend(bytes(TagByte(self._item_kind)))
-        result.extend(bytes(TagInt(len(self))))
-        for tag in self._val:
-            result.extend(bytes(tag))
-        return bytes(result)
-    
-    @property
-    def value(self) -> list[TagDataABC]:
-        return self._val
-    
-    @property
-    def item_kind_tag(self) -> TagByte:
-        return TagByte(self._item_kind)
-    
-    def append(self, item: TagDataABC):
-        if not isinstance(item, TagDataABC):
-            raise TypeError()
-        self._val.append(item)
-    
-class TagCompound(TagDataABC):
-    '''
-    A 'TagCompound' is an non-homogeneous container for NBT tags.
-    NOTE: this class will automatically ensure that the value ends with a 'TagEnd' tag (so don't manually add one).
-    NOTE: if this tag's value has any tags after a TagEnd, those tags will not be included when written to a file or converted to bytes.
-    '''
-
-    kind = TAG_COMPOUND
-
-    @classmethod
-    def read_from_file(cls, file: BinaryIO | GzipFile) -> 'TagCompound':
-        '''Read the compound tag's payload: a sequence of tags until a TagEnd.'''
-        tags: list[NamedTag] = []
-        tag = NamedTag.read_from_file(file)
-        tags.append(tag)
-        while tag.kind != TAG_END:
-            tag = NamedTag.read_from_file(file)
-            tags.append(tag)
-        return TagCompound(tags)
-    
-    @override
-    def write_to_file_stepped(self, file: BinaryIO | GzipFile):
-        # Add all data values (but don't allow TagEnd values before the end!)
-        for name, tag in self._val.items():
-            if isinstance(tag, TagEnd):
-                #raise TypeError("an extraneous TagEnd value was found within a TagCompound")
-                continue
-            NamedTag(name, tag).write_to_file_stepped(file)
-        # Add the terminating TagEnd value
-        NamedTag('', TagEnd()).write_to_file_stepped(file)
-    
-    def __init__(self, val: Iterable['NamedTag'] | Mapping[str, TagDataABC]):
-        '''
-        Create a new 'TagCompound' with either a sequence of 'NamedTag's or a dict that maps
-        'str's to instances that inherit from 'TagDataABC'.
-        NOTE: if given an iterable of 'NamedTag's, if a 'TagEnd' is encountered before the end of the iterable, the rest of the named tags will not be added.
-        '''
-        self._val: dict[str, TagDataABC] = {}
-        if isinstance(val, dict):
-            ## Initialize from a dictionary that maps names to tag data
-            for name, tag in val.items():
-                if not isinstance(name, str):
-                    raise TypeError("name is not a 'str'")
-                if not isinstance(tag, TagDataABC):
-                    raise TypeError(f"item \"{tag}\" is not a 'TagDataABC' instance")
-                if isinstance(tag, TagEnd):
-                    # Ignore TagEnd values
-                    continue
-                self._val[name] = tag
-        elif isinstance(val, list):
-            ## Initialize from a list of named tags
-            for named_tag in val:
-                if not isinstance(named_tag, NamedTag):
-                    raise TypeError("named_tag is not a 'NamedTag' instance")
-                if isinstance(named_tag.payload, TagEnd):
-                    # Stop if a TagEnd value is encountered
+    def write_to_file(self, file: BinaryIO | GzipFile) -> None:
+        k = self._tag_kind
+        if k == TAG_END: 
+            return
+        elif k in (TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG):
+            file.write(nbt_int_to_bytes(self.val_int, int_tag_size(self._tag_kind)))
+        elif k == TAG_FLOAT: 
+            file.write(struct.pack('>f', self.val_float))
+        elif k == TAG_DOUBLE:
+            file.write(struct.pack('>d', self.val_float))
+        elif k == TAG_STRING:
+            TagShort(len(self.val_str)).write_to_file(file)
+            file.write(self.val_str.encode('utf-8'))
+        elif k in (TAG_LIST, TAG_BYTE_ARRAY, TAG_INT_ARRAY, TAG_LONG_ARRAY):
+            if k == TAG_LIST:
+                ## List element type byte
+                TagByte(self._list_item_kind).write_to_file(file)
+            ## Element count
+            TagInt(len(self.val_list)).write_to_file(file)
+            ## Elements
+            for tag in self.val_list:
+                tag.write_to_file(file)
+        elif k == TAG_COMPOUND:
+            for name, tag in self.val_comp.items():
+                if tag.tag_kind == TAG_END:
+                    ## Stop if a tag_end is encountered early
                     break
-                self._val[named_tag.name] = named_tag.payload
+                NamedTag(name, tag).write_to_file(file)
+            ## Write the tag_end tag
+            NamedTag().write_to_file(file)
         else:
-            raise TypeError("must initialize a 'TagCompound' from a list of 'NamedTag's or from a dict that maps 'str's to 'TagDataABC's")
-
-    def __bytes__(self) -> bytes:
-        result = bytearray()
-        # Add all data values (but don't allow TagEnd values before the end!)
-        for name, tag in self._val.items():
-            if isinstance(tag, TagEnd):
-                #raise TypeError("an extraneous TagEnd value was found within a TagCompound")
-                continue
-            named_tag = NamedTag(name, tag)
-            result.extend(bytes(named_tag))
-        # Add the terminating TagEnd value
-        result.extend(bytes(NamedTag('', TagEnd())))
-        return bytes(result)
-    
-    def __len__(self) -> int:
-        return len(self._val)
+            raise ValueError("this TagPayload has invalid 'tag_kind'")
     
     @property
-    def value(self) -> list['NamedTag']:
-        '''NOTE: value list of tags does not have the 'TagEnd' at the end'''
-        #return [ NamedTag(name, tag) for name, tag in self._val.items() ] + [ NamedTag('', TagEnd()) ]
-        return [ NamedTag(name, tag) for name, tag in self._val.items() ]
+    def tag_kind(self) -> int:
+        return self._tag_kind
     
-    def items(self) -> ItemsView[str, TagDataABC]:
-        '''Get this compound's item tags.'''
-        return self._val.items()
+    @property
+    def kind_tag(self) -> 'TagPayload':
+        return TagByte(self._tag_kind)
     
-    def item_values(self) -> Generator[tuple[str, Any], None, None]:
-        '''NOTE: recursively evaluates sub-item tags'''
-        for name, tag in self._val.items():
-            if isinstance(tag, TagArrayABC):
-                yield (name, list(tag.value_values))
-            elif isinstance(tag, TagCompound):
-                yield (name, dict(tag.item_values()))
-            else:
-                yield (name, tag.value)
+    @property
+    def kind_name(self) -> str: 
+        return tag_kind_to_str(self._tag_kind)
     
-    def get(self, key: str) -> TagDataABC | None:
-        '''Get the first tag found that has the given name.'''
-        try:
-            return self[key]
-        except KeyError:
+    @property
+    def value(self) -> None | int | float | str | list['TagPayload'] | list['NamedTag']:
+        k = self._tag_kind
+        if k == TAG_END:
             return None
-    
-    @override
-    def __getitem__(self, key: str) -> TagDataABC:
-        '''Get the first tag found that has the given name.'''
-        if not isinstance(key, str):
-            raise TypeError("index 'key' must be a 'str'")
-        return self._val[key]
-    
-    @override
-    def __setitem__(self, key: str, value: TagDataABC):
-        if not isinstance(key, str):
-            raise TypeError("index 'key' must be a 'str'")
-        if not isinstance(value, TagDataABC):
-            raise TypeError("'value' must be an instance of 'TagDataABC'")
-        if isinstance(value, TagEnd):
-            raise TypeError("cannot put a literal TagEnd value into a TagCompound (the terminating TagEnd is handled automatically)")
-        self._val[key] = value
-    
-class TagIntArray(TagArrayABC):
-
-    kind = TAG_INT_ARRAY
-
-    @classmethod
-    def read_from_file(cls, file: BinaryIO | GzipFile) -> 'TagIntArray':
-        count = TagInt.read_from_file(file)._val
-        return TagIntArray([ TagInt.read_from_file(file)._val for _ in range(count) ])
-    
-    def __init__(self, val: Iterable[int]):
-        self._val = list( int_sized(x, TagInt.size) for x in val )
-
-    def __bytes__(self) -> bytes:
-        result = bytearray()
-        result.extend(bytes(TagInt(len(self))))
-        for x in self._val:
-            result.extend(bytes(TagInt(x)))
-        return bytes(result)
-    
-    @property
-    def value(self) -> list[int]:
-        return self._val
-    
-    def append(self, item: TagDataABC):
-        if not isinstance(item, TagInt):
-            raise TypeError()
-        self._val.append(item.value)
-    
-class TagLongArray(TagArrayABC):
-
-    kind = TAG_LONG_ARRAY
-
-    @classmethod
-    def read_from_file(cls, file: BinaryIO | GzipFile) -> 'TagLongArray':
-        count = TagInt.read_from_file(file)._val
-        return TagLongArray([ TagLong.read_from_file(file)._val for _ in range(count) ])
-    
-    def __init__(self, val: Iterable[int]):
-        self._val = list( int_sized(x, TagLong.size) for x in val )
-
-    def __bytes__(self) -> bytes:
-        result = bytearray()
-        result.extend(bytes(TagInt(len(self))))
-        for x in self._val:
-            result.extend(bytes(TagLong(x)))
-        return bytes(result)
-    
-    @property
-    def value(self) -> list[int]:
-        return self._val
-    
-    def append(self, item: TagDataABC):
-        if not isinstance(item, TagLong):
-            raise TypeError()
-        self._val.append(item.value)
-    
+        elif k in (TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG):
+            return self.val_int
+        elif k in (TAG_FLOAT, TAG_DOUBLE):
+            return self.val_float
+        elif k == TAG_STRING:
+            return self.val_str
+        elif k in (TAG_LIST, TAG_BYTE_ARRAY, TAG_INT_ARRAY, TAG_LONG_ARRAY):
+            return self.val_list
+        elif k == TAG_COMPOUND:
+            return [ NamedTag(name, tag) for name, tag in self.val_comp.items() ]
+        else:
+            raise ValueError(f'TagPayload has invalid tag_kind: {k}')
+         
 class NamedTag:
     '''
     Represents a Named Binary Tag.
     The binary format for this is [tag-type, a TagByte], and then [name, a TagString], and finally [payload, a Tag].
     '''
 
-    @staticmethod
-    def read_from_file(file: BinaryIO | GzipFile) -> 'NamedTag':
+    @classmethod
+    def read_from_file(cls, file: BinaryIO | GzipFile) -> 'NamedTag':
         '''
         Read a named tag from a file. If EOF is reached, return a 'TagEnd' tag.
         NOTE: because of this behavior, a file may omit the trail of ending TagEnd tag(s) to close the top-level TagCompound(s).
         '''
         ## Read the tag type byte
         try:
-            kind = TagByte.read_from_file(file)
+            kind = TagPayload.read_from_file(TAG_BYTE, file)
         except (IndexError, EOFError):
             return NamedTag("", TagEnd())
         if kind.value not in ALL_TAG_TYPES:
@@ -616,59 +232,23 @@ class NamedTag:
         if kind.value == TAG_END:
             ## Special case: don't read a name or payload for TagEnd
             return NamedTag('', TagEnd())
-        else:
-            ## Read the tag name (string tag)
-            name_tag = TagString.read_from_file(file)
-            ## Read the tag payload pay
-            tag_class = TagDataABC.kind_to_class_type(kind.value)
-            data_tag = tag_class.read_from_file(file)
-            return NamedTag(name_tag, data_tag)
+        ## Read the tag name (string tag)
+        name_tag = TagPayload.read_from_file(TAG_STRING, file)
+        ## Read the tag payload
+        data_tag = TagPayload.read_from_file(kind.val_int, file)
+        return NamedTag(name_tag.val_str, data_tag)
 
-    def __init__(self, name: str | TagString = '', payload: TagDataABC | None = None):
-        '''Create a 'NamedTag' with a 'name' string and a NBT tag 'payload'.'''
-        self.name: str = name.value if isinstance(name, TagString) else str(name)
-        self.payload: TagDataABC = TagEnd() if (payload is None) else payload
-        if not isinstance(payload, TagDataABC):
-            raise TypeError(f"payload for a 'NamedTag' must be an instance of 'TagDataABC' but is of type {type(payload)}")
+    def __init__(self, name: str = '', payload: TagPayload | None = None):
+        '''Create a 'NamedTag' with a 'name' string and a NBT tag 'payload'. If given no arguments, creates an unnamed tag_end tag.'''
+        self.name: str = str(name)
+        self.payload: TagPayload = TagEnd() if (payload is None) else payload
+        if not isinstance(self.payload, TagPayload):
+            raise TypeError(f"payload for a 'NamedTag' must be an instance of 'TagPayload' but is of type {type(payload)}")
     
-    def get(self, key: str | int) -> TagDataABC | None:
-        '''Calls 'get' on the 'payload' data tag.'''
-        try:
-            return self.payload.get(key)
-        except NotImplementedError as e:
-            raise TypeError(*e.args)
-        
-    def __getitem__(self, key: str | int) -> TagDataABC:
-        '''Calls '__getitem__' on the 'payload' data tag.'''
-        try:
-            return self.payload.__getitem__(key)
-        except NotImplementedError as e:
-            raise TypeError(*e.args)
-    
-    def __setitem__(self, key: str | int, value: TagDataABC):
-        '''Calls '__setitem__' on the 'payload' data tag.'''
-        try:
-            self.payload.__setitem__(key, value)
-        except NotImplementedError as e:
-            raise TypeError(*e.args)
-
-    def __str__(self) -> str:
-        return f"NamedTag(name=\"{self.name}\", payload={self.payload})"
-        
     @property
     def kind(self) -> int:
         '''Get this named tag's tag type a.k.a. kind.'''
-        return self.payload.kind
-    
-    @property
-    def kind_tag(self) -> TagByte:
-        '''Get the TabByte that indicates the NBT payload tag type a.k.a kind.'''
-        return self.payload.kind_tag
-    
-    @property
-    def kind_int(self) -> int:
-        '''Get the int that indicates the NBT payload tag type a.k.a kind.'''
-        return self.payload.kind
+        return self.payload.tag_kind
     
     @property
     def kind_name(self) -> str:
@@ -676,49 +256,68 @@ class NamedTag:
         return self.payload.kind_name
     
     @property
-    def name_tag(self) -> TagString:
+    def name_tag(self) -> TagPayload:
         '''Get a string name tag that represents this tag's name.'''
         return TagString(self.name)
     
-    @property
-    def value(self) -> list | dict | str | int:
-        '''
-        Get this named tag's Python-only value (unpack data from all NBT objects into a Python type).
-        NOTE: this recursively evaluates the entire tree NBT sub-elements.
-        '''
-        if isinstance(self.payload, TagArrayABC):
-            return list(self.payload.value_values)
-        elif isinstance(self.payload, TagCompound):
-            return dict(self.payload.item_values())
-        else:
-            return self.payload.value
+    def write_to_file(self, file: BinaryIO | GzipFile) -> None:
+        '''Write this named tag's binary representation to the given file'''
+        TagPayload(TAG_BYTE, self.kind).write_to_file(file)
+        if self.payload.tag_kind == TAG_END:
+            return
+        self.name_tag.write_to_file(file)
+        self.payload.write_to_file(file)
     
-    def __bytes__(self) -> bytes:
-        '''Convert this entire named tag to bytes, including type, name, and tag payload.'''
-        b_arr = bytearray()
-        b_arr.append(self.kind)
-        if not isinstance(self.payload, TagEnd): # TAG_END cannot be named and has no data payload
-            b_arr.extend(bytes(self.name_tag))
-            b_arr.extend(bytes(self.payload))
-        return bytes(b_arr)
+    def __getitem__(self, key: str | int) -> TagPayload:
+        '''Calls '__getitem__' on the 'payload' data tag.'''
+        return self.payload[key]
     
-    def write_to_file(self, file: BinaryIO | GzipFile) -> int:
-        '''
-        Write all of this named tag's data to a file by first creating the entire data byte buffer and then writing it all at once.
-        
-        See also: 'write_to_file_stepped'.
-        '''
-        return file.write(bytes(self))
-    
-    def write_to_file_stepped(self, file: BinaryIO | GzipFile):
-        '''
-        Write all of this named tag's data to a file by calling the 'write_to_file_stepped' method on all sub-tags.
-        This can prevent converting the whole structure to bytes before writing to a file, so it might be more performant.
+    def __setitem__(self, key: str | int, value: TagPayload):
+        '''Calls '__setitem__' on the 'payload' data tag.'''
+        self.payload[key] = value
 
-        See also: 'write_to_file'
-        '''
-        self.kind_tag.write_to_file_stepped(file)
-        if not isinstance(self.payload, TagEnd): # TAG_END cannot be named and has no data payload
-            self.name_tag.write_to_file_stepped(file)
-            self.payload.write_to_file_stepped(file)
+    def __str__(self) -> str:
+        return f"NamedTag(name=\"{self.name}\", payload={self.payload})"
     
+def TagEnd() -> TagPayload:  
+    return TagPayload(TAG_END)
+
+def TagByte(val: int) -> TagPayload: 
+    return TagPayload(TAG_BYTE, val)
+
+def TagShort(val: int) -> TagPayload:  
+    return TagPayload(TAG_SHORT, val)
+
+def TagInt(val: int) -> TagPayload: 
+    return TagPayload(TAG_INT, val)
+
+def TagLong(val: int) -> TagPayload: 
+    return TagPayload(TAG_LONG, val)
+
+def TagFloat(val: float) -> TagPayload: 
+    return TagPayload(TAG_FLOAT, val)
+
+def TagDouble(val: float) -> TagPayload: 
+    return TagPayload(TAG_DOUBLE, val)
+
+def TagByteArray(val: int) -> TagPayload: 
+    return TagPayload(TAG_BYTE_ARRAY, val)
+
+def TagString(val: str) -> TagPayload: 
+    return TagPayload(TAG_STRING, val)
+
+def TagList(item_type: int, values: list[TagPayload]) -> TagPayload: 
+    return TagPayload(TAG_LIST, values, list_item_kind=item_type)
+
+def TagCompound(values: Mapping[str, TagPayload]) -> TagPayload: 
+    return TagPayload(TAG_COMPOUND, values)
+
+def TagIntArray(values: list[int] | list[TagPayload]) -> TagPayload:
+    if len(values) and not isinstance(values[0], TagPayload):
+        values = [ TagPayload(TAG_INT, x) for x in values ]
+    return TagPayload(TAG_INT_ARRAY, values, list_item_kind=TAG_INT)
+
+def TagLongArray(values: list[int] | list[TagPayload]) -> TagPayload:
+    if len(values) and not isinstance(values[0], TagPayload):
+        values = [ TagPayload(TAG_LONG, x) for x in values ]
+    return TagPayload(TAG_LONG_ARRAY, values, list_item_kind=TAG_LONG)

@@ -13,18 +13,19 @@ print("Creating...")
 # test whatever for the value of x
 x = NamedTag("root", TagCompound({
     'byte': TagByte(-12),
-    'string X': TagString('X value'),
     'short': TagShort(44),
     'int': TagInt(7),
     'long': TagLong(71),
+    'string X': TagString('X value'),
+    'float': TagFloat(3.14159),
     'double': TagDouble(3.14159),
-    'list': TagList(TagDouble, [
+    'list': TagList(TAG_DOUBLE, [
         TagDouble(1.0),
-    ])
+    ]),
 }))
 # </EditMe>
 
-print("x =", x.value)
+print("x =", x)
 print_tag(x)
 
 if do_write:
@@ -37,5 +38,5 @@ if do_read:
     with open("small_test.nbt", "rb") as f2:
         y = NamedTag.read_from_file(f2)
 
-    print("y =", y.value)
+    print("y =", y)
     print_tag(y)
