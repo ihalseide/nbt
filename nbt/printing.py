@@ -25,8 +25,10 @@ def print_tag(tag: TagPayload | NamedTag, indent=0, indent_str='  ', within_list
         print(end=f"{tag_type_name}: ")
 
     # Print the tag data payload
-    if tag.tag_kind in (TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG, TAG_FLOAT, TAG_DOUBLE):
+    if tag.tag_kind in (TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG):
         print(end=str(tag.val_int))
+    elif tag.tag_kind in (TAG_FLOAT, TAG_DOUBLE):
+        print(end=str(tag.val_float))
     elif tag.tag_kind == TAG_STRING:
         print(end=f"\"{tag.val_str}\"")
     elif tag.tag_kind == TAG_BYTE_ARRAY:
