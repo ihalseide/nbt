@@ -74,11 +74,6 @@ class TagDataABC(ABC):
         elif tag_kind == TAG_LONG_ARRAY: return TagLongArray
         else:
             raise ValueError("invalid kind value")
-
-    @staticmethod
-    def dispatch_read_from_file(tag_kind: int, file: BinaryIO | GzipFile) -> 'TagDataABC':
-        tag_class = TagDataABC.kind_to_class_type(tag_kind)
-        return tag_class.read_from_file(file)
     
     @classmethod
     @abstractmethod
@@ -631,7 +626,8 @@ class NamedTag:
             ## Read the tag name (string tag)
             name_tag = TagString.read_from_file(file)
             ## Read the tag payload pay
-            data_tag = TagDataABC.dispatch_read_from_file(kind.value, file)
+            tag_class = TagDataABC.kind_to_class_type(kind.value)
+            data_tag = tag_class.read_from_file(file)
             return NamedTag(name_tag, data_tag)
 
     def __init__(self, name: str | TagString = '', payload: TagDataABC | None = None):
