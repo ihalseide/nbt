@@ -38,4 +38,4 @@ ALL_TAG_TYPES = (
     TAG_COMPOUND, TAG_INT_ARRAY, 
     TAG_LONG_ARRAY)
 
-assert(len(ALL_TAG_TYPES) == len(TAG_NAMES))
+assert(len(ALL_TAG_TYPES) == len(TAG_NAMES) == 13)
