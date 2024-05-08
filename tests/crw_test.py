@@ -2,8 +2,6 @@
 Create-read-write test for the nbt module.
 '''
 
-import nbt
-import gzip
 from nbt import NamedTag, TagCompound, TagString, TagShort
 from nbt.printing import print_tag
 
@@ -15,7 +13,7 @@ print("Creating...")
 # test whatever for the value of x
 x = NamedTag("root", TagCompound({
     'x': TagString('X value'),
-    'short value lol': TagShort(555555)
+    'short value lol': TagShort(44)
 }))
 # </EditMe>
 
