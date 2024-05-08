@@ -127,10 +127,12 @@ class TagDataABC(ABC):
         raise NotImplementedError("this NBT tag type does not implement `get`")
     
     def __getitem__(self, key) -> 'TagDataABC':
-        raise NotImplementedError("this NBT tag type is not subscriptable")
+        kind = type(self).__name__
+        raise NotImplementedError(f"NBT tag of type {kind} is not subscriptable")
     
     def __setitem__(self, key, value):
-        raise NotImplementedError("this NBT tag type is not subscriptable")
+        kind = type(self).__name__
+        raise NotImplementedError(f"NBT tag of type {kind} is not subscriptable")
     
     def __str__(self) -> str:
         type_name = type(self).__name__
@@ -604,6 +606,10 @@ class TagLongArray(TagArrayABC):
         self._val.append(item.value)
     
 class NamedTag:
+    '''
+    Represents a Named Binary Tag.
+    The binary format for this is [tag-type, a TagByte], and then [name, a TagString], and finally [payload, a Tag].
+    '''
 
     @staticmethod
     def read_from_file(file: BinaryIO | GzipFile) -> 'NamedTag':
@@ -630,8 +636,6 @@ class NamedTag:
 
     def __init__(self, name: str | TagString = '', payload: TagDataABC | None = None):
         '''Create a 'NamedTag' with a 'name' string and a NBT tag 'payload'.'''
-        if not isinstance(payload, TagDataABC):
-            raise TypeError("a 'NamedTag' must be initialized with a payload that is an instance of 'TagDataABC'")
         self.name: str = name.value if isinstance(name, TagString) else str(name)
         self.payload: TagDataABC = TagEnd() if (payload is None) else payload
         if not isinstance(payload, TagDataABC):
@@ -639,15 +643,24 @@ class NamedTag:
     
     def get(self, key: str | int) -> TagDataABC | None:
         '''Calls 'get' on the 'payload' data tag.'''
-        return self.payload.get(key)
+        try:
+            return self.payload.get(key)
+        except NotImplementedError as e:
+            raise TypeError(*e.args)
         
     def __getitem__(self, key: str | int) -> TagDataABC:
         '''Calls '__getitem__' on the 'payload' data tag.'''
-        return self.payload[key]
+        try:
+            return self.payload.__getitem__(key)
+        except NotImplementedError as e:
+            raise TypeError(*e.args)
     
     def __setitem__(self, key: str | int, value: TagDataABC):
         '''Calls '__setitem__' on the 'payload' data tag.'''
-        self.payload[key] = value
+        try:
+            self.payload.__setitem__(key, value)
+        except NotImplementedError as e:
+            raise TypeError(*e.args)
 
     def __str__(self) -> str:
         return f"NamedTag(name=\"{self.name}\", payload={self.payload})"
