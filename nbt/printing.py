@@ -46,6 +46,8 @@ def print_tag(tag: TagDataABC | NamedTag, indent=0, indent_str='  ', within_list
             print(f"{tag.element_count} entries {{")
             for tag_j in tag.value:
                 print_tag(tag_j, indent = indent + 1, indent_str = indent_str)
+            print(end = indent_str * (indent))
+            print(end="}")
         elif isinstance(tag, TagIntArray):
             if tag.element_count > 10:
                 print(end=f"[{tag.element_count} ints]")
