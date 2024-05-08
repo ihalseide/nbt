@@ -26,13 +26,12 @@ def nbt_int_to_bytes(x: int, length: int) -> bytes:
     '''
     return x.to_bytes(length, byteorder='big', signed=True)
     
-def int_tag_size(tag_type: int) -> int:
-    '''Size in bytes for an integer-like tag type'''
-    if tag_type == TAG_BYTE: return 1
-    if tag_type == TAG_SHORT: return 2
-    if tag_type == TAG_INT: return 4
-    if tag_type == TAG_LONG: return 8
-    raise ValueError(f'tag_type {tag_type} is not a integer tag type')
+def numeric_tag_size(tag_type: int) -> int:
+    '''Size in bytes for an integer-like and float-like tag type'''
+    lookup = { TAG_BYTE: 1, TAG_SHORT: 2, TAG_INT: 4, TAG_LONG: 8, TAG_FLOAT: 4, TAG_DOUBLE: 8 }
+    result = lookup.get(tag_type)
+    if not result: raise ValueError(f'tag_type {tag_type} is not a integer or float tag type')
+    return result
 
 def int_sized(x: Any, size_bytes: int) -> int:
     '''Convert a value to int and make sure it can be represented by at most 'size_bytes' bytes.
@@ -51,10 +50,8 @@ def tag_kind_to_str(tag_type: int) -> str:
 
 def tag_array_type_to_item_type(tag_type: int) -> int:
     '''Get what the sub-item tag type for the given array-like tag type is.'''
-    if tag_type == TAG_BYTE_ARRAY: return TAG_BYTE
-    if tag_type == TAG_INT_ARRAY: return TAG_INT
-    if tag_type == TAG_LONG_ARRAY: return TAG_LONG
-    return TAG_END
+    lookup = { TAG_BYTE_ARRAY: TAG_BYTE, TAG_INT_ARRAY: TAG_INT, TAG_LONG_ARRAY: TAG_LONG }
+    return lookup.get(tag_type, TAG_END)
 
 class TagPayload:
 
@@ -67,12 +64,12 @@ class TagPayload:
             return TagPayload(k)
         elif k in (TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG):
             ## Integer types
-            size = int_tag_size(k)
+            size = numeric_tag_size(k)
             return TagPayload(k, nbt_int_from_bytes(file.read(size), size))
         elif k == TAG_FLOAT: 
-            return TagPayload(k, struct.unpack('>f', file.read(4))[0])
+            return TagPayload(k, struct.unpack('>f', file.read(numeric_tag_size(TAG_FLOAT)))[0])
         elif k == TAG_DOUBLE:
-            return TagPayload(k, struct.unpack('>d', file.read(8))[0])
+            return TagPayload(k, struct.unpack('>d', file.read(numeric_tag_size(TAG_DOUBLE)))[0])
         elif k == TAG_STRING:
             ## Read length-prefixed string (length prefix is a tag_short)
             str_len = TagPayload.read_from_file(TAG_SHORT, file).val_int
@@ -115,7 +112,7 @@ class TagPayload:
         ## Assign the correct value (if given None, the default value will be kept, which also covers the case with a tag_end tag).
         if tag_value is not None:
             if self.tag_kind in (TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG) and isinstance(tag_value, int):
-                self.val_int = int_sized(tag_value, int_tag_size(self._tag_kind))
+                self.val_int = int_sized(tag_value, numeric_tag_size(self._tag_kind))
             elif self.tag_kind in (TAG_FLOAT, TAG_DOUBLE) and isinstance(tag_value, float):
                 self.val_float = tag_value
             elif self.tag_kind == TAG_STRING and isinstance(tag_value, str):
@@ -186,11 +183,13 @@ class TagPayload:
         if k == TAG_END: 
             return
         elif k in (TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG):
-            file.write(nbt_int_to_bytes(self.val_int, int_tag_size(self.tag_kind)))
+            file.write(nbt_int_to_bytes(self.val_int, numeric_tag_size(self.tag_kind)))
         elif k == TAG_FLOAT: 
-            file.write(struct.pack('>f', self.val_float))
+            n = file.write(struct.pack('>f', self.val_float))
+            assert(n == numeric_tag_size(k))
         elif k == TAG_DOUBLE:
-            file.write(struct.pack('>d', self.val_float))
+            n = file.write(struct.pack('>d', self.val_float))
+            assert(n == numeric_tag_size(k))
         elif k == TAG_STRING:
             TagShort(len(self.val_str)).write_to_file(file)
             file.write(self.val_str.encode('utf-8'))
