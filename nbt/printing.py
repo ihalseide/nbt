@@ -29,34 +29,34 @@ def print_tag(tag: TagDataABC | NamedTag, indent=0, indent_str='  ', within_list
         elif isinstance(tag, TagString):
             print(end=f"\"{tag.value}\"")
         elif isinstance(tag, TagByteArray):
-            if tag.element_count > 10:
-                print(end=f"[{tag.element_count} bytes]")
+            if len(tag) > 10:
+                print(end=f"[{len(tag)} bytes]")
             else:
                 print(end="[ ")
                 for b in tag.value:
                     print(end = f"{b:02X} ")
                 print(end="]")
         elif isinstance(tag, TagList):
-            inner_type_name = tag_kind_to_str(tag.element_kind_tag.value)
-            print(f"{tag.element_count} entries of type {inner_type_name} {{")
+            inner_type_name = tag_kind_to_str(tag.item_kind_tag.value)
+            print(f"{len(tag)} entries of type {inner_type_name} {{")
             for tag_i in tag.value:
                 print_tag(tag_i, indent = indent + 1, indent_str = indent_str, within_list = True)
             print(end = indent_str * indent)
             print(end="}")
         elif isinstance(tag, TagCompound):
-            print(f"{tag.element_count} entries {{")
+            print(f"{len(tag)} entries {{")
             for tag_j in tag.value:
                 print_tag(tag_j, indent = indent + 1, indent_str = indent_str)
             print(end = indent_str * (indent))
             print(end="}")
         elif isinstance(tag, TagIntArray):
-            if tag.element_count > 10:
-                print(end=f"[{tag.element_count} ints]")
+            if len(tag) > 10:
+                print(end=f"[{len(tag)} ints]")
             else:
                 print(end=str(tag.value))
         elif isinstance(tag, TagLongArray):
-            if tag.element_count > 10:
-                print(end=f"[{tag.element_count} longs]")
+            if len(tag) > 10:
+                print(end=f"[{len(tag)} longs]")
             else:
                 print(end=str(tag.value))
         else:
