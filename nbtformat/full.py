@@ -1,13 +1,19 @@
 '''
-Classes for NBT tags that fully contain the data payload from a file (in-memory).'
+Classes for NBT tags that fully contain the data payload from a file (in-memory).
+
+This is useful for fully loading an NBT file, modifying it, and then writing the whole data again.
+
+A good future extension would be able to modify NBT data more efficiently in-place.
 
 NOTE: TAG_END is often used as a default or error value in this file
 '''
 
 
-import struct
+# These imports are for the type annotations:
 from typing import BinaryIO, Any, Iterable, Mapping
-from gzip import GzipFile # imported for the type annotation
+from gzip import GzipFile
+
+import struct
 
 from .constants import *
 
@@ -63,6 +69,10 @@ def tag_array_type_to_item_type(tag_type: int) -> int:
 
 
 class TagPayload:
+    '''
+    This base class represents a NBT data element, such as a tag_int, tag_string, etc.
+    Typically, you do not want to instantiate this directly, but rather use the defined subclasses TagInt, TagString, etc.
+    '''
 
     @classmethod
     def read_from_file(cls, tag_kind: int, file: BinaryIO | GzipFile) -> 'TagPayload':
@@ -151,6 +161,10 @@ class TagPayload:
     
 
     def __str__(self) -> str:
+        '''
+        Get a very basic string representation. 
+        NOTE: Use the nbtformat.printing submodule for a full string conversion.
+        '''
         if self.tag_kind in (TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG):
             info = str(self.val_int)
         elif self.tag_kind == TAG_STRING:
@@ -162,7 +176,7 @@ class TagPayload:
 
 
     def __len__(self) -> int:
-        '''For list-like tags only, get the length of this tag's value (sub-element count)'''
+        '''Length for string, array, compound, and list-like tags only, get the length of this tag's value (the sub-element count)'''
         if self.tag_kind in (TAG_LIST, TAG_BYTE_ARRAY, TAG_INT, TAG_LONG_ARRAY):
             return len(self.val_list)
         elif self.tag_kind == TAG_STRING:
@@ -208,7 +222,7 @@ class TagPayload:
     
 
     def write_to_file(self, file: BinaryIO | GzipFile) -> None:
-        '''Write the binary tag payload data to a binary file.'''
+        '''Write the binary tag payload's data value to a file.'''
         k = self._tag_kind
         if k == TAG_END:
             # No payload
@@ -254,17 +268,19 @@ class TagPayload:
 
     @property
     def tag_kind(self) -> int:
+        '''Get the kind of tag this is (integer value).'''
         return self._tag_kind
     
 
     @property
     def kind_name(self) -> str: 
+        '''Get the name string for the kind of tag this is.'''
         return tag_kind_to_str(self._tag_kind)
     
 
     @property
     def item_kind(self) -> int:
-        '''For list-like TagPayloads only, get the tag type of the inner element.'''
+        '''For list-like TagPayload's only, get the tag type of the inner element.'''
         if self.tag_kind == TAG_LIST:
             return self._list_item_kind
         return tag_array_type_to_item_type(self.tag_kind)
@@ -272,7 +288,7 @@ class TagPayload:
 
 class NamedTag:
     '''
-    Represents a Named Binary Tag.
+    Represents a Named Binary Tag, which is a name string plus a TagPayload.
     The binary format for this is [tag-type, a TagByte], and then [name, a TagString], and finally [payload, a Tag].
     '''
 
@@ -321,11 +337,11 @@ class NamedTag:
     
 
     def write_to_file(self, file: BinaryIO | GzipFile) -> None:
-        '''Write this named tag's binary representation to the given file'''
+        '''Write this named tag's binary representation to the given file, which is type, name, and then data'''
         ## Write the tag type byte
         TagPayload(TAG_BYTE, self.payload.tag_kind).write_to_file(file)
         if self.payload.tag_kind == TAG_END:
-            ## tag_end tags don't have a name or payload
+            ## Special case: tag_end tags don't have a name or payload
             return
         ## Write the name and payload
         TagString(self.name).write_to_file(file)
@@ -341,69 +357,86 @@ class NamedTag:
 
 
     def __str__(self) -> str:
-        return f"NamedTag(name=\"{self.name}\", payload={self.payload})"
+        return f"NamedTag(name=\"{self.name}\", payload={str(self.payload)})"
     
 
 class TagEnd(TagPayload):
+    '''
+    Has no payload and shouldn't have a name. This tag marks the end of a tag_compound's data.
+    NOTE: TAG_END is often used as a default or error value in this file.
+    NOTE: TagCompound automatically handles putting a tag_end tag at the end of its data.
+    '''
     def __init__(self, ):
         super().__init__(TAG_END)
 
 
 class TagByte(TagPayload):
+    '''Single byte integer value.'''
     def __init__(self, val: int):
         super().__init__(TAG_BYTE, val)
 
 
 class TagShort(TagPayload):
+    '''Short integer value.'''
     def __init__(self, val: int):
         super().__init__(TAG_SHORT, val)
 
 
 class TagInt(TagPayload):
+    '''Integer value.'''
     def __init__(self, val: int):
         super().__init__(TAG_INT, val)
 
 
 class TagLong(TagPayload):
+    '''Long integer value.'''
     def __init__(self, val: int):
         super().__init__(TAG_LONG, val)
 
 
 class TagFloat(TagPayload):
+    '''Single-precision floating-point value.'''
     def __init__(self, val: float):
         super().__init__(TAG_FLOAT, val)
 
 
 class TagDouble(TagPayload):
+    '''Double-precision floating-point value.'''
     def __init__(self, val: float):
         super().__init__(TAG_DOUBLE, val)
 
 
 class TagByteArray(TagPayload):
+    '''Fixed array of bytes.'''
     def __init__(self, val: int):
         super().__init__(TAG_BYTE_ARRAY, val)
 
 
 class TagString(TagPayload):
+    '''Sequence of UTF-8 encoded characters.'''
     def __init__(self, val: str):
         super().__init__(TAG_STRING, val)
 
 
 class TagList(TagPayload):
+    '''List of homogenous NBT data values.'''
     def __init__(self, item_type: int, values: list[TagPayload] | None = None):
         super().__init__(TAG_LIST, values, list_item_kind=item_type)
 
 
 class TagCompound(TagPayload):
+    '''Collection that maps string names to tag payloads. The tag_end tag marks the end of a tag_compound's data.'''
     def __init__(self, values: Mapping[str, TagPayload] | None = None):
         super().__init__(TAG_COMPOUND, values)
 
 
 class TagIntArray(TagPayload):
+    '''Fixed array of integers.'''
     def __init__(self, values: list[TagPayload] | None = None):
         super().__init__(TAG_INT_ARRAY, values)
 
 
 class TagLongArray(TagPayload):
+    '''Fixed array of long integers.'''
     def __init__(self, values: list[TagPayload] | None = None):
         super().__init__(TAG_LONG_ARRAY, values)

@@ -1,14 +1,14 @@
-# nbt
+# Module: nbtformat
 
-This is a Python libary for reading, writing, and manipulating Named Binary Tag (NBT) files and data structures.
+This is a Python library for reading, writing, and manipulating Named Binary Tag (NBT) files and data structures.
 
-**NOTE**: this Python package is not fully set up yet (will fix).
+For documentation, install and `import` it in Python and use Python's built-in help and doc functionality.
 
 ## Named Binary Tags
 
-For the specification for NBT, see the file "Named Binary Tags.txt", which is taken from Markus Perrson's [original specification](https://web.archive.org/web/20110723210920/http://www.minecraft.net/docs/NBT.txt).
+For the specification for NBT, see the included file "Named Binary Tags Specification.txt", which is taken from Markus Perrson's [original specification](https://web.archive.org/web/20110723210920/http://www.minecraft.net/docs/NBT.txt).
 
-## Example usage
+## Examples
 
 It is meant to be straightforward to read, write, and manually create NBT data structures.
 
@@ -17,8 +17,8 @@ It is meant to be straightforward to read, write, and manually create NBT data s
 Example of creating a NBT data structure and saving it to a file:
 
 ```python
-from nbt import NamedTag, TagCompound, TagFloat, TagDouble
-from nbt.printing import print_tag
+from nbtformat import NamedTag, TagCompound, TagFloat, TagDouble
+from nbtformat.printing import print_tag
 
 # Create a NBT tag from scratch
 x = NamedTag("Position data", TagCompound({
@@ -38,8 +38,8 @@ with open("example 1.nbt", "wb") as f_out:
 
 Example of reading a saved NBT file:
 ```python
-from nbt import NamedTag
-from nbt.printing import print_tag
+from nbtformat import NamedTag
+from nbtformat.printing import print_tag
 
 # Read a NBT tag from a file (assuming file "example 1.nbt" already exists and is not gzipped)
 with open("example 1.nbt", "rb") as f_in:
