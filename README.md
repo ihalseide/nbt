@@ -1,6 +1,6 @@
 # nbt
 
-This is a Python libary for working with Named Binary Tag (NBT) files and data structures.
+This is a Python libary for reading, writing, and manipulating Named Binary Tag (NBT) files and data structures.
 
 **NOTE**: this Python package is not fully set up yet (will fix).
 
