@@ -19,7 +19,7 @@ def print_tag(tag: TagPayload | NamedTag, indent=0, indent_str='  ', within_list
     # Print type and possibly the tag's name
     print(end = indent_str * indent)
     tag_type_name = tag.kind_name
-    if _name and not within_list:
+    if _name and (not within_list):
         print(end=f"{tag_type_name}(\"{_name}\"): ")
     else:
         print(end=f"{tag_type_name}: ")

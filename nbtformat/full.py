@@ -109,16 +109,19 @@ class TagPayload:
                  list_item_kind: int = TAG_END) -> None:
         if not tag_kind in ALL_TAG_TYPES:
             raise ValueError(f"Attempted to initialize 'TagPayload' with invalid 'tag_kind': {tag_kind}")
+        
         self._tag_kind: int = tag_kind
         self._list_item_kind: int = list_item_kind
         if (self.tag_kind == TAG_LIST) and list_item_kind == TAG_END:
             raise ValueError(f"must provide a tag 'list_item_kind' argument for a {self.kind_name}")
+        
         ## Potential value types. It is only expected that one of these is valid at a time:
         self.val_int: int = 0
         self.val_float: float = 0.0
         self.val_str: str = ''
         self.val_list: list[TagPayload] = []
         self.val_comp: dict[str, TagPayload] = {}
+
         ## Assign the correct value (if given None, the default value will be kept, which also covers the case with a tag_end tag).
         if tag_value is not None:
             if self.tag_kind in (TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG) and isinstance(tag_value, int):
@@ -148,11 +151,13 @@ class TagPayload:
     
 
     def __str__(self) -> str:
-        info = '...'
         if self.tag_kind in (TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG):
             info = str(self.val_int)
         elif self.tag_kind == TAG_STRING:
             info = f"\"{self.val_str}\""
+        else:
+            info = '...'
+
         return f"{self.kind_name}({info})"
 
 
@@ -169,48 +174,64 @@ class TagPayload:
     
 
     def __getitem__(self, index: int | str) -> 'TagPayload':
-        if self.tag_kind in (TAG_LIST, TAG_BYTE_ARRAY, TAG_INT, TAG_LONG_ARRAY) and isinstance(index, int):
+        if self.tag_kind in (TAG_LIST, TAG_BYTE_ARRAY, TAG_INT, TAG_LONG_ARRAY):
+            if not isinstance(index, int):
+                raise TypeError(f"TagPayload of kind {self.kind_name} may only be indexed by {type(int)}, not {type(index)}")
             return self.val_list[index]
-        elif (self.tag_kind == TAG_COMPOUND) and isinstance(index, str):
+        elif (self.tag_kind == TAG_COMPOUND):
+            if not isinstance(index, str):
+                raise TypeError(f"TagPayload of kind {self.kind_name} may only be indexed by {type(str)}, not {type(index)}")
             return self.val_comp[index]
         else:
-            raise AttributeError(f"TagPayload of kind {self.kind_name} is not indexable by value of type {type(index)}")
+            raise AttributeError(f"TagPayload of kind {self.kind_name} is not indexable")
     
 
-    def __setitem__(self, index: int | str, value: 'TagPayload'):        
-        if self.tag_kind == TAG_LIST and isinstance(index, int):
+    def __setitem__(self, index: int | str, value: 'TagPayload'):
+        if self.tag_kind == TAG_LIST:
+            if not isinstance(index, int):
+                raise TypeError(f"TagPayload of kind {self.kind_name} may only be indexed by {type(int)}, not {type(index)}")
             if self._list_item_kind != value.tag_kind:
                 raise ValueError(f"Cannot assign an element within a {value.kind_name} tag to a value of kind {value.kind_name}")
             self.val_list[index] = value
-        elif self.tag_kind in (TAG_BYTE_ARRAY, TAG_INT, TAG_LONG_ARRAY) and isinstance(index, int):
+        elif self.tag_kind in (TAG_BYTE_ARRAY, TAG_INT, TAG_LONG_ARRAY):
+            if not isinstance(index, int):
+                raise TypeError(f"TagPayload of kind {self.kind_name} may only be indexed by {type(int)}, not {type(index)}")
             if tag_array_type_to_item_type(self.tag_kind) != value.tag_kind:
                 raise ValueError(f"Cannot assign an element within a {value.kind_name} tag to a value of kind {value.kind_name}")
             self.val_list[index] = value
-        elif (self.tag_kind == TAG_COMPOUND) and isinstance(index, str):
+        elif (self.tag_kind == TAG_COMPOUND):
+            if not isinstance(index, str):
+                raise ValueError(f"Cannot assign an element within a {value.kind_name} tag to a value of kind {value.kind_name}")
             self.val_comp[index] = value
         else:
-            raise AttributeError(f"TagPayload of kind {self.kind_name} is not indexable by value of type {type(index)}")
+            raise AttributeError(f"TagPayload of kind {self.kind_name} is not indexable")
     
 
     def write_to_file(self, file: BinaryIO | GzipFile) -> None:
         '''Write the binary tag payload data to a binary file.'''
         k = self._tag_kind
-        if k == TAG_END: 
+        if k == TAG_END:
+            # No payload
             return
         elif k in (TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG):
+            # Integer kind
             file.write(nbt_int_to_bytes(self.val_int, numeric_tag_size(self.tag_kind)))
         elif k == TAG_FLOAT: 
+            # Float as standard float
             n = file.write(struct.pack('>f', self.val_float))
             assert(n == numeric_tag_size(k))
         elif k == TAG_DOUBLE:
+            # Double as standard double
             n = file.write(struct.pack('>d', self.val_float))
             assert(n == numeric_tag_size(k))
         elif k == TAG_STRING:
+            # String is length-encoded with an (unnamed) short value
             TagShort(len(self.val_str)).write_to_file(file)
             file.write(self.val_str.encode('utf-8'))
         elif k in (TAG_LIST, TAG_BYTE_ARRAY, TAG_INT_ARRAY, TAG_LONG_ARRAY):
+            # Lists/arrays have an element count and then the elements
             if k == TAG_LIST:
-                ## List element type byte
+                ## List additionally has an element type byte
                 TagByte(self._list_item_kind).write_to_file(file)
             ## Element count
             TagInt(len(self.val_list)).write_to_file(file)
@@ -218,6 +239,7 @@ class TagPayload:
             for tag in self.val_list:
                 tag.write_to_file(file)
         elif k == TAG_COMPOUND:
+            # Compound tag has named sub-tags up until a tag_end at this level
             for name, tag in self.val_comp.items():
                 if tag.tag_kind == TAG_END:
                     ## Stop if a tag_end is encountered early
@@ -226,8 +248,10 @@ class TagPayload:
             ## Write the tag_end tag
             NamedTag().write_to_file(file)
         else:
-            raise ValueError(f"this TagPayload has invalid 'tag_kind': {k}")
+            # Invalid tag_kind
+            raise ValueError(f"cannot save this TagPayload because it has an unhandled/invalid 'tag_kind': {k}")
     
+
     @property
     def tag_kind(self) -> int:
         return self._tag_kind
@@ -253,7 +277,20 @@ class NamedTag:
     '''
 
     @classmethod
-    def read_from_file(cls, file: BinaryIO | GzipFile) -> 'NamedTag':
+    def read_from_file(cls, file: BinaryIO | GzipFile | str) -> 'NamedTag':
+        '''
+        Read a named tag from a file or file path. If EOF is reached, return a 'TagEnd' tag.
+        NOTE: because of this behavior, a file may omit the trail of ending TagEnd tag(s) to close the top-level TagCompound(s).
+        '''
+        if isinstance(file, str):
+            with open(file, "rb") as arg:
+                return cls._read_from_file(arg)
+        else:
+            return cls._read_from_file(file)
+    
+
+    @classmethod
+    def _read_from_file(cls, file: BinaryIO | GzipFile) -> 'NamedTag':
         '''
         Read a named tag from a file. If EOF is reached, return a 'TagEnd' tag.
         NOTE: because of this behavior, a file may omit the trail of ending TagEnd tag(s) to close the top-level TagCompound(s).

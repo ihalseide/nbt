@@ -3,15 +3,14 @@ requires = ["setuptools >= 61.0"]
 build-backend = "setuptools.build_meta"
 [project]
 dynamic = ["version"]
-name = "nbt"
-dependencies = ["gzip"]
+name = "nbtformat"
 requires-python = ">= 3.6"
 authors = [
-    {name = "Izak Halseide", email = "hizak@pm.me"}
+    {name = "ihalseide", email = "ihalseide@pm.me"}
 ]
 maintainers = [
-    {name = "Izak Halseide", email = "hizak@pm.me"}
+    {name = "ihalseide", email = "ihalseide@pm.me"}
 ]
-description = "A module for working with data in the Named Binary Tag file format"
+description = "Named Binary Tag file format reading, writing, and manipulation"
 readme = "README.md"
 license = { file = "LICENSE.txt" }

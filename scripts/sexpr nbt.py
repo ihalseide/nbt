@@ -2,22 +2,22 @@
 Convert S-expressions to NBT data structure.
 '''
 
-import nbt
-import nbt.constants
-import nbt.printing
+import nbtformat
+import nbtformat.constants
+import nbtformat.printing
 
 TYPE_NAMES = ("compound", "string", "int", "list", "short", "byte", "long", "float", "double")
 
 def type_name_to_id(type_name) -> int:
-    if type_name == "compound": return nbt.TAG_COMPOUND
-    if type_name == "string": return nbt.TAG_STRING
-    if type_name == "int": return nbt.TAG_INT
-    if type_name == "list": return nbt.TAG_LIST
-    if type_name == "short": return nbt.TAG_SHORT
-    if type_name == "byte": return nbt.TAG_BYTE
-    if type_name == "float": return nbt.TAG_FLOAT
-    if type_name == "double": return nbt.TAG_DOUBLE
-    if type_name == "long": return nbt.TAG_LONG
+    if type_name == "compound": return nbtformat.TAG_COMPOUND
+    if type_name == "string": return nbtformat.TAG_STRING
+    if type_name == "int": return nbtformat.TAG_INT
+    if type_name == "list": return nbtformat.TAG_LIST
+    if type_name == "short": return nbtformat.TAG_SHORT
+    if type_name == "byte": return nbtformat.TAG_BYTE
+    if type_name == "float": return nbtformat.TAG_FLOAT
+    if type_name == "double": return nbtformat.TAG_DOUBLE
+    if type_name == "long": return nbtformat.TAG_LONG
     raise ValueError(type_name)
 
 '''
@@ -26,7 +26,7 @@ def type_name_to_id(type_name) -> int:
 (compound "root2" (string "a" "A string")
                   (int "b" 3))
 '''
-def sexpr_to_nbt(sexpr: str) -> tuple[nbt.NamedTag, str]:
+def sexpr_to_nbt(sexpr: str) -> tuple[nbtformat.NamedTag, str]:
     if not sexpr:
         raise ValueError()
     sexpr = skip_space(sexpr)
@@ -38,9 +38,9 @@ def sexpr_to_nbt(sexpr: str) -> tuple[nbt.NamedTag, str]:
     sexpr = skip_space(sexpr)
     tag, sexpr = sexpr_to_bt(type_name, sexpr)
     _, sexpr = expect_string(')', sexpr)
-    return nbt.NamedTag(name, tag), sexpr
+    return nbtformat.NamedTag(name, tag), sexpr
 
-def sexpr_to_bt(type_name: str, sexpr: str) -> tuple[nbt.TagPayload, str]:
+def sexpr_to_bt(type_name: str, sexpr: str) -> tuple[nbtformat.TagPayload, str]:
     if type_name in ('byte', 'short', 'int', 'long'):
         val1, sexpr = expect_int(sexpr)
         return make_tag(type_name, val1), sexpr
@@ -51,7 +51,7 @@ def sexpr_to_bt(type_name: str, sexpr: str) -> tuple[nbt.TagPayload, str]:
         val2, sexpr = expect_quoted_string(sexpr)
         return make_tag(type_name, val2), sexpr
     elif type_name == 'compound':
-        values: list[nbt.NamedTag] = []
+        values: list[nbtformat.NamedTag] = []
         _, sexpr = expect_string('(', sexpr)
         sexpr = skip_space(sexpr)
         while sexpr and not sexpr.startswith(')'):
@@ -62,7 +62,7 @@ def sexpr_to_bt(type_name: str, sexpr: str) -> tuple[nbt.TagPayload, str]:
         values_dict = { nt.name: nt.payload for nt in values }
         return make_tag(type_name, values_dict), sexpr
     elif type_name == 'list':
-        values2: list[nbt.TagPayload] = []
+        values2: list[nbtformat.TagPayload] = []
         list_type_name, sexpr = expect_type_name('', sexpr)
         sexpr = skip_space(sexpr)
         _, sexpr = expect_string('(', sexpr)
@@ -76,16 +76,16 @@ def sexpr_to_bt(type_name: str, sexpr: str) -> tuple[nbt.TagPayload, str]:
     else:
         raise NotImplementedError(type_name)
     
-def make_tag(type_name: str, data, list_type = None) -> nbt.TagPayload:
-    if type_name == 'byte': return nbt.TagByte(data)
-    if type_name == 'short': return nbt.TagShort(data)
-    if type_name == 'int': return nbt.TagInt(data)
-    if type_name == 'long': return nbt.TagLong(data)
-    if type_name == 'float': return nbt.TagFloat(data)
-    if type_name == 'double': return nbt.TagDouble(data)
-    if type_name == 'string': return nbt.TagString(data)
-    if type_name == 'compound': return nbt.TagCompound(data)
-    if type_name == 'list': return nbt.TagList(list_type, data)
+def make_tag(type_name: str, data, list_type = None) -> nbtformat.TagPayload:
+    if type_name == 'byte': return nbtformat.TagByte(data)
+    if type_name == 'short': return nbtformat.TagShort(data)
+    if type_name == 'int': return nbtformat.TagInt(data)
+    if type_name == 'long': return nbtformat.TagLong(data)
+    if type_name == 'float': return nbtformat.TagFloat(data)
+    if type_name == 'double': return nbtformat.TagDouble(data)
+    if type_name == 'string': return nbtformat.TagString(data)
+    if type_name == 'compound': return nbtformat.TagCompound(data)
+    if type_name == 'list': return nbtformat.TagList(list_type, data)
     raise NotImplementedError(type_name)
 
 def expect_int(sexpr: str) -> tuple[int, str]:
@@ -144,4 +144,4 @@ sexpr = '''
 ))
 '''
 nt, remaining = sexpr_to_nbt(sexpr)
-nbt.printing.print_tag(nt)
+nbtformat.printing.print_tag(nt)

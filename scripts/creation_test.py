@@ -1,4 +1,4 @@
-from nbt import *
+from nbtformat import *
 
 x = NamedTag("Creation TEST", TagCompound({
     'byte': TagByte(-12),
