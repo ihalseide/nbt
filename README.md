@@ -1,6 +1,7 @@
 # Module: nbtformat
 
 This is a Python library for reading, writing, and manipulating Named Binary Tag (NBT) files and data structures.
+Main git repository URL: [github.com/ihalseide/nbt](https://github.com/ihalseide/nbt).
 
 For documentation, install and `import` it in Python and use Python's built-in help and doc functionality.
 
