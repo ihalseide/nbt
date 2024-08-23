@@ -1,12 +1,16 @@
 '''
-Classes for NBT tags that fully contain the data payload from a file.
+Classes for NBT tags that fully contain the data payload from a file (in-memory).'
+
+NOTE: TAG_END is often used as a default or error value in this file
 '''
+
 
 import struct
 from typing import BinaryIO, Any, Iterable, Mapping
 from gzip import GzipFile # imported for the type annotation
 
 from .constants import *
+
 
 def nbt_int_from_bytes(b: bytes, length: int) -> int:
     '''
@@ -17,27 +21,30 @@ def nbt_int_from_bytes(b: bytes, length: int) -> int:
         raise ValueError(f"not enough bytes for data type of length {length} (only found {len(b)} bytes)")
     return int.from_bytes(b, byteorder='big', signed=True)
 
+
 def nbt_int_to_bytes(x: int, length: int) -> bytes:
     '''
     Converts integer to bytes consistently for all of the int-like tag classes.
     NOTE: should be synchronized with the 'nbt_int_from_bytes' function
     '''
     return x.to_bytes(length, byteorder='big', signed=True)
-    
+
+
 def numeric_tag_size(tag_type: int) -> int:
     '''Size in bytes for an integer-like and float-like tag type'''
-    lookup = { TAG_BYTE: 1, TAG_SHORT: 2, TAG_INT: 4, TAG_LONG: 8, TAG_FLOAT: 4, TAG_DOUBLE: 8 }
-    result = lookup.get(tag_type)
+    result = TAG_NUMERIC_BYTE_COUNT.get(tag_type)
     if not result: raise ValueError(f'tag_type {tag_type} is not a integer or float tag type')
     return result
+
 
 def int_sized(x: Any, size_bytes: int) -> int:
     '''Convert a value to int and make sure it can be represented by at most 'size_bytes' bytes.
     Raises a 'ValueError' otherwise.'''
     result = int(x)
     if (result.bit_length() / 8.0) > size_bytes:
-        raise ValueError(f"magnitude of integer value '{result}' is too large to fir within a {size_bytes}-byte representation")
+        raise ValueError(f"magnitude of integer value '{result}' is too large to fit within a {size_bytes}-byte representation")
     return result
+
 
 def tag_kind_to_str(tag_type: int) -> str:
     '''Get the string name for a tag type'''
@@ -46,10 +53,14 @@ def tag_kind_to_str(tag_type: int) -> str:
     except IndexError:
         raise ValueError(f"int value of {tag_type} does not represent a type of NBT tag")
 
+
 def tag_array_type_to_item_type(tag_type: int) -> int:
-    '''Get what the sub-item tag type for the given array-like tag type is.'''
-    lookup = { TAG_BYTE_ARRAY: TAG_BYTE, TAG_INT_ARRAY: TAG_INT, TAG_LONG_ARRAY: TAG_LONG }
-    return lookup.get(tag_type, TAG_END)
+    '''
+    Get what the sub-item tag type for the given array-like tag type is.
+    The default/error value returned is TAG_END.
+    '''
+    return TAG_ARRAY_SUBTYPES.get(tag_type, TAG_END)
+
 
 class TagPayload:
 
@@ -90,6 +101,7 @@ class TagPayload:
             return TagPayload(k, compound)
         else:
             raise ValueError(f"cannot read a tag with invalid tag kind: {tag_kind}")
+
 
     def __init__(self, 
                  tag_kind: int = TAG_END, 
@@ -134,6 +146,7 @@ class TagPayload:
             else:
                 raise TypeError(f"Cannot assign value of type {type(tag_value)} to TagPayload of type {self.kind_name}")
     
+
     def __str__(self) -> str:
         info = '...'
         if self.tag_kind in (TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG):
@@ -141,6 +154,7 @@ class TagPayload:
         elif self.tag_kind == TAG_STRING:
             info = f"\"{self.val_str}\""
         return f"{self.kind_name}({info})"
+
 
     def __len__(self) -> int:
         '''For list-like tags only, get the length of this tag's value (sub-element count)'''
@@ -153,6 +167,7 @@ class TagPayload:
         else:
             raise AttributeError(f"TagPayload of kind {self.kind_name} does not have a 'len'")
     
+
     def __getitem__(self, index: int | str) -> 'TagPayload':
         if self.tag_kind in (TAG_LIST, TAG_BYTE_ARRAY, TAG_INT, TAG_LONG_ARRAY) and isinstance(index, int):
             return self.val_list[index]
@@ -161,6 +176,7 @@ class TagPayload:
         else:
             raise AttributeError(f"TagPayload of kind {self.kind_name} is not indexable by value of type {type(index)}")
     
+
     def __setitem__(self, index: int | str, value: 'TagPayload'):        
         if self.tag_kind == TAG_LIST and isinstance(index, int):
             if self._list_item_kind != value.tag_kind:
@@ -175,6 +191,7 @@ class TagPayload:
         else:
             raise AttributeError(f"TagPayload of kind {self.kind_name} is not indexable by value of type {type(index)}")
     
+
     def write_to_file(self, file: BinaryIO | GzipFile) -> None:
         '''Write the binary tag payload data to a binary file.'''
         k = self._tag_kind
@@ -215,10 +232,12 @@ class TagPayload:
     def tag_kind(self) -> int:
         return self._tag_kind
     
+
     @property
     def kind_name(self) -> str: 
         return tag_kind_to_str(self._tag_kind)
     
+
     @property
     def item_kind(self) -> int:
         '''For list-like TagPayloads only, get the tag type of the inner element.'''
@@ -226,6 +245,7 @@ class TagPayload:
             return self._list_item_kind
         return tag_array_type_to_item_type(self.tag_kind)
          
+
 class NamedTag:
     '''
     Represents a Named Binary Tag.
@@ -256,11 +276,13 @@ class NamedTag:
         data_tag = TagPayload.read_from_file(kind.val_int, file)
         return NamedTag(name_tag.val_str, data_tag)
 
+
     def __init__(self, name: str = '', payload: TagPayload | None = None):
         '''Create a 'NamedTag' with a 'name' string and a 'payload' NBT tag . If given no arguments, creates an unnamed tag_end tag.'''
         self.name: str = str(name)
         self.payload: TagPayload = TagEnd() if (payload is None) else payload
     
+
     def write_to_file(self, file: BinaryIO | GzipFile) -> None:
         '''Write this named tag's binary representation to the given file'''
         ## Write the tag type byte
@@ -272,62 +294,78 @@ class NamedTag:
         TagString(self.name).write_to_file(file)
         self.payload.write_to_file(file)
     
+
     def __getitem__(self, key: str | int) -> TagPayload:
         return self.payload[key]
     
+
     def __setitem__(self, key: str | int, value: TagPayload):
         self.payload[key] = value
+
 
     def __str__(self) -> str:
         return f"NamedTag(name=\"{self.name}\", payload={self.payload})"
     
+
 class TagEnd(TagPayload):
     def __init__(self, ):
         super().__init__(TAG_END)
+
 
 class TagByte(TagPayload):
     def __init__(self, val: int):
         super().__init__(TAG_BYTE, val)
 
+
 class TagShort(TagPayload):
     def __init__(self, val: int):
         super().__init__(TAG_SHORT, val)
+
 
 class TagInt(TagPayload):
     def __init__(self, val: int):
         super().__init__(TAG_INT, val)
 
+
 class TagLong(TagPayload):
     def __init__(self, val: int):
         super().__init__(TAG_LONG, val)
+
 
 class TagFloat(TagPayload):
     def __init__(self, val: float):
         super().__init__(TAG_FLOAT, val)
 
+
 class TagDouble(TagPayload):
     def __init__(self, val: float):
         super().__init__(TAG_DOUBLE, val)
+
 
 class TagByteArray(TagPayload):
     def __init__(self, val: int):
         super().__init__(TAG_BYTE_ARRAY, val)
 
+
 class TagString(TagPayload):
     def __init__(self, val: str):
         super().__init__(TAG_STRING, val)
+
 
 class TagList(TagPayload):
     def __init__(self, item_type: int, values: list[TagPayload] | None = None):
         super().__init__(TAG_LIST, values, list_item_kind=item_type)
 
+
 class TagCompound(TagPayload):
     def __init__(self, values: Mapping[str, TagPayload] | None = None):
         super().__init__(TAG_COMPOUND, values)
 
+
 class TagIntArray(TagPayload):
     def __init__(self, values: list[TagPayload] | None = None):
         super().__init__(TAG_INT_ARRAY, values)
+
 
 class TagLongArray(TagPayload):
     def __init__(self, values: list[TagPayload] | None = None):
